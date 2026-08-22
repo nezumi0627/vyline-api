@@ -2,7 +2,7 @@
 
 identity / E2EE を追従しつつ、セッションは副端末で公式 Desktop と併存できるパッケージ。
 
-- **既定**: `ANDROIDSECONDARY`（公式 `DESKTOPWIN` と同時ログイン可）
+- **既定**: `IOSIPAD`（公式 `DESKTOPWIN` と同時ログイン可）
 - **オプトイン**: `VYLINE_DEVICE=DESKTOPWIN` で Desktop 関数レベル完全エミュ（公式を蹴る）
 
 同時ログイン調査: リポジトリ `docs/analysis/dual-login-desktop.md`
@@ -13,13 +13,13 @@ identity / E2EE を追従しつつ、セッションは副端末で公式 Deskto
 
 | 値                 | 既定 | 効果                                                        |
 | ------------------ | ---- | ----------------------------------------------------------- |
-| `ANDROIDSECONDARY` | ○    | 副端末。公式 Desktop / スマホと共存                         |
-| `IOSIPAD`          |      | 副端末（代替）                                              |
+| `IOSIPAD`          | ○    | 副端末。公式 Desktop / スマホと共存                         |
+| `ANDROIDSECONDARY` |      | 副端末（代替・v4p 認証可）                                  |
 | `DESKTOPWIN`       |      | Desktop ヘッダー・login パッチ適用。公式 Win Desktop を蹴る |
 | `DESKTOPMAC`       |      | 公式 Mac Desktop を蹴る                                     |
 
 ```powershell
-$env:VYLINE_DEVICE = "ANDROIDSECONDARY"  # 省略時もこれ
+$env:VYLINE_DEVICE = "IOSIPAD"            # 省略時もこれ
 $env:VYLINE_DEVICE = "DESKTOPWIN"        # 互換調査用
 ```
 
@@ -32,7 +32,7 @@ VylineUpdater ──detect/refresh──► DesktopProfile (UA / X-Line-Applicat
         │
         ▼
 VylineClient (@vyline/protocol/stack + Desktop patches)
-  ├─ deviceMode             … VYLINE_DEVICE（既定 ANDROIDSECONDARY）
+  ├─ deviceMode             … VYLINE_DEVICE（既定 IOSIPAD）
   ├─ patchDesktopTransport  … DESKTOP* 時のみヘッダー上書き
   ├─ patchDesktopLogin      … DESKTOP* 時のみ QR / Email RPC 上書き
   ├─ ensureValidE2EEIdentity … 自己鍵の検証・Desktop 鍵 import

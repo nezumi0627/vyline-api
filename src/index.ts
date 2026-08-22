@@ -1,7 +1,7 @@
 /**
  * @vyline/protocol — LINE 互換レイヤ + Desktop 追従 (VylineUpdater)
  *
- * 既定セッション: ANDROIDSECONDARY（公式 DESKTOPWIN と同時ログイン可）
+ * 既定セッション: IOSIPAD（公式 DESKTOPWIN と同時ログイン可）
  * Desktop 完全エミュ: VYLINE_DEVICE=DESKTOPWIN（公式 Desktop を蹴る）
  * Desktop の identity / E2EE 鍵の正はインストール済み LINE.exe 側。
  *
