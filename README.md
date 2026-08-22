@@ -1,6 +1,6 @@
 # @vyline/protocol (Vyline)
 
-LINE Desktop Windows の identity / E2EE を追従しつつ、セッションは副端末で公式 Desktop と併存できるパッケージ。
+identity / E2EE を追従しつつ、セッションは副端末で公式 Desktop と併存できるパッケージ。
 
 - **既定**: `ANDROIDSECONDARY`（公式 `DESKTOPWIN` と同時ログイン可）
 - **オプトイン**: `VYLINE_DEVICE=DESKTOPWIN` で Desktop 関数レベル完全エミュ（公式を蹴る）
