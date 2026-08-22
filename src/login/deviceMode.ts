@@ -2,7 +2,7 @@
  * デバイスモード
  *
  * DESKTOPWIN 同士は公式 Desktop セッションを蹴る。
- * 既定は ANDROIDSECONDARY（副端末スロット）で同時ログイン可能。
+ * 既定は IOSIPAD（副端末スロット）で同時ログイン可能。
  *
  * env:
  *   VYLINE_DEVICE=ANDROIDSECONDARY | IOSIPAD | DESKTOPWIN | DESKTOPMAC

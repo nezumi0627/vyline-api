@@ -1,7 +1,7 @@
 /**
  * LINE 互換 protocol client — LINE 互換クライアント
  *
- * 既定デバイス: ANDROIDSECONDARY（公式 Desktop と同時ログイン可）
+ * 既定デバイス: IOSIPAD（公式 Desktop と同時ログイン可）
  * Desktop 完全エミュ: VYLINE_DEVICE=DESKTOPWIN（公式 Desktop を蹴る）
  */
 
@@ -27,7 +27,7 @@ export type VylineClient = Client;
 export interface VylineLoginInit {
   profile: DesktopProfile;
   storagePath: string;
-  /** 省略時は VYLINE_DEVICE / ANDROIDSECONDARY */
+  /** 省略時は VYLINE_DEVICE / IOSIPAD */
   deviceMode?: VylineDeviceMode | string;
   desktopKeysPath?: string;
 }
