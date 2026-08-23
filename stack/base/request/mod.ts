@@ -42,6 +42,9 @@ export class RequestClient {
     "/api/v3p/rs": "TalkException",
     "/api/v4p/rs": "TalkException",
     "/api/v3/TalkService.do": "TalkException",
+    // E2EE 鍵バックアップ系 (E2EEKeyBackupException: code/reason/parameterMap)
+    "/EKBS4": "E2EEKeyBackupException",
+    "/LKBS4": "E2EEKeyBackupException",
   };
 
   constructor(client: BaseClient) {

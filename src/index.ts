@@ -98,6 +98,10 @@ export {
   importDesktopE2EEKeys,
   loadDesktopE2EEKeyDump,
   defaultDesktopE2EEKeysPath,
+  normalizeDesktopE2EEKey,
+  loadSbcBackupKeyDumps,
+  mergeDesktopE2EEKeyDumps,
+  derivePubKey,
 } from "./login/importDesktopE2EE.js";
 export {
   ensureGroupKeyById,
