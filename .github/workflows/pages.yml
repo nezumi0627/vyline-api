@@ -1,0 +1,45 @@
+name: Deploy Swagger UI to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/pages.yml"]
+  schedule:
+    - cron: "0 3 * * *" # 毎日 03:00 UTC — vyline main の spec 変更を追従
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: nezumi0627/vyline
+          ref: main
+          path: vyline-src
+      - uses: oven-sh/setup-bun@v2
+      - name: Build static docs
+        run: bun vyline-src/scripts/build-api-docs.ts dist-api-docs
+        working-directory: ${{ github.workspace }}
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-api-docs
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

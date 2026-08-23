@@ -5,7 +5,8 @@
  * (Curve25519 の鍵検証、SHA256 派生、XOR、keychain の AES-256-CBC 復号) を
  * Vyline 自身のコードとして持つ。アルゴリズムは標準的な暗号プリミティブの
  * 組み合わせであり、LINE 固有の秘密ではない
- * (docs/analysis/e2ee-decrypt-journey.md 参照)。
+ * (vyline モノレポ docs/analysis/e2ee-decrypt-journey.md 参照:
+ *  https://github.com/nezumi0627/vyline/blob/main/docs/analysis/e2ee-decrypt-journey.md )。
  */
 
 import { createDecipheriv, createHash, randomBytes } from "node:crypto";
