@@ -8835,6 +8835,88 @@ export function restoreE2EEKeyBackup_args(
 ): NestedArray {
   return typeof param === "undefined" ? [] : [[12, 2, Pb1_C13155r7(param.request)]];
 }
+
+// ─── E2EELifetimeKeyBackupService (/LKBS4) writers ───
+
+export function RestoreLifetimeKeyBackupHeaderRequest(
+  param?: PartialDeep<LINETypes.RestoreLifetimeKeyBackupHeaderRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined" ? [] : [[11, 1, param.restoreClaim]];
+}
+
+export function ValidateLifetimeKeyBackupRequest(
+  param?: PartialDeep<LINETypes.ValidateLifetimeKeyBackupRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [
+        [10, 1, param.masterKeyTimestamp],
+        [11, 2, param.blobHeaderHash],
+        [15, 3, [12, param.metadataList && param.metadataList.map((e) => Pb1_W5(e))]],
+      ];
+}
+
+export function AddLifetimeKeyBackupPayloadDataListRequest(
+  param?: PartialDeep<LINETypes.AddLifetimeKeyBackupPayloadDataListRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[15, 1, [12, param.payloadDataList && param.payloadDataList.map((e) => Pb1_X5(e))]]];
+}
+
+export function UpdateLifetimeKeyBackupHeaderRequest(
+  param?: PartialDeep<LINETypes.UpdateLifetimeKeyBackupHeaderRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined" ? [] : [[11, 1, param.blobHeader]];
+}
+
+export function GetLifetimeKeyBackupPayloadDataListRequest(
+  param?: PartialDeep<LINETypes.GetLifetimeKeyBackupPayloadDataListRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[15, 1, [12, param.metadataList && param.metadataList.map((e) => Pb1_W5(e))]]];
+}
+
+export function restoreLifetimeKeyBackupHeader_args(
+  param?: PartialDeep<LINETypes.restoreLifetimeKeyBackupHeader_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 2, RestoreLifetimeKeyBackupHeaderRequest(param.request)]];
+}
+
+export function validateLifetimeKeyBackup_args(
+  param?: PartialDeep<LINETypes.validateLifetimeKeyBackup_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 2, ValidateLifetimeKeyBackupRequest(param.request)]];
+}
+
+export function addLifetimeKeyBackupPayloadDataList_args(
+  param?: PartialDeep<LINETypes.addLifetimeKeyBackupPayloadDataList_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 2, AddLifetimeKeyBackupPayloadDataListRequest(param.request)]];
+}
+
+export function updateLifetimeKeyBackupHeader_args(
+  param?: PartialDeep<LINETypes.updateLifetimeKeyBackupHeader_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 2, UpdateLifetimeKeyBackupHeaderRequest(param.request)]];
+}
+
+export function getLifetimeKeyBackupPayloadDataList_args(
+  param?: PartialDeep<LINETypes.getLifetimeKeyBackupPayloadDataList_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 2, GetLifetimeKeyBackupPayloadDataListRequest(param.request)]];
+}
 export function retrieveRequestTokenWithDocomoV2_args(
   param?: PartialDeep<LINETypes.retrieveRequestTokenWithDocomoV2_args> | undefined,
 ): NestedArray {

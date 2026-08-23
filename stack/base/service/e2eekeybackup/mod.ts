@@ -41,4 +41,16 @@ export class E2EEKeyBackupService implements BaseService {
       this.requestPath,
     );
   }
+
+  async restoreE2EEKeyBackup(
+    ...param: Parameters<typeof LINEStruct.restoreE2EEKeyBackup_args>
+  ): Promise<LINETypes.restoreE2EEKeyBackup_result["success"]> {
+    return await this.client.request.request(
+      LINEStruct.restoreE2EEKeyBackup_args(...param),
+      "restoreE2EEKeyBackup",
+      this.protocolType,
+      true,
+      this.requestPath,
+    );
+  }
 }

@@ -29,8 +29,11 @@
       "types": "./stack/_dist/base/thrift/mod.d.ts",
       "default": "./stack/base/thrift/mod.ts"
     },
+    "./stack/base/service/e2eekeybackup": "./stack/base/service/e2eekeybackup/mod.ts",
+    "./stack/base/service/e2eelifetimekeybackup": "./stack/base/service/e2eelifetimekeybackup/mod.ts",
     "./call": "./src/call/index.ts",
-    "./e2ee/pubCacheKeys": "./src/e2ee/pubCacheKeys.ts"
+    "./e2ee/pubCacheKeys": "./src/e2ee/pubCacheKeys.ts",
+    "./sbc": "./src/sbc/mod.ts"
   },
   "scripts": {
     "delta": "bun ./src/tools/reportDesktopDelta.ts",
@@ -44,10 +47,13 @@
   },
   "dependencies": {
     "@noble/ciphers": "^2.2",
+    "@noble/curves": "^2.3.0",
+    "@noble/hashes": "^2.3.0",
     "@vyline/line-types": "workspace:*",
     "@vyline/loose-types": "workspace:*",
     "crypto-js": "^4.2.0",
     "curve25519-js": "^0.0.4",
+    "frida": "^17.17.0",
     "node-bignumber": "^1.2.2",
     "node-int64": "^0.4.0",
     "opusscript": "^0.1.1",
