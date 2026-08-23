@@ -116,9 +116,7 @@ export function normalizeDesktopE2EEKey(raw: unknown): DesktopE2EEKey | null {
   };
 }
 
-function dedupeKeys(
-  keys: DesktopE2EEKey[],
-): { keys: DesktopE2EEKey[]; duplicates: number } {
+function dedupeKeys(keys: DesktopE2EEKey[]): { keys: DesktopE2EEKey[]; duplicates: number } {
   const byId = new Map<number, DesktopE2EEKey>();
   let duplicates = 0;
   for (const key of keys) {
@@ -218,13 +216,17 @@ export function mergeDesktopE2EEKeyDumps(
   const seen = new Set(primary.keys.map((k) => Number(k.keyId)));
   const added = extra.keys.filter((k) => !seen.has(Number(k.keyId)));
   const { keys, duplicates } = dedupeKeys([...primary.keys, ...added]);
-  return withOptionalMeta(keys, {
-    mid: primary.mid ?? extra.mid,
-    extractedAt: primary.extractedAt ?? extra.extractedAt,
-  }, {
-    duplicateCount: (primary.duplicateCount ?? 0) + (extra.duplicateCount ?? 0) + duplicates,
-    invalidCount: (primary.invalidCount ?? 0) + (extra.invalidCount ?? 0),
-  });
+  return withOptionalMeta(
+    keys,
+    {
+      mid: primary.mid ?? extra.mid,
+      extractedAt: primary.extractedAt ?? extra.extractedAt,
+    },
+    {
+      duplicateCount: (primary.duplicateCount ?? 0) + (extra.duplicateCount ?? 0) + duplicates,
+      invalidCount: (primary.invalidCount ?? 0) + (extra.invalidCount ?? 0),
+    },
+  );
 }
 
 /**
