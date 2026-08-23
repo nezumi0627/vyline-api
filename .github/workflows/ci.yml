@@ -30,10 +30,16 @@ jobs:
         id: sibref
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_BRANCH: ${{ github.head_ref }}
         run: |
+          # Determine branch: PR uses head_ref, workflow_dispatch uses ref (refs/heads/<branch>)
+          if [ -n "${{ github.head_ref }}" ]; then
+            BRANCH="${{ github.head_ref }}"
+          else
+            BRANCH="${{ github.ref }}"
+            BRANCH="${BRANCH#refs/heads/}"
+          fi
           REF="main"
-          for c in "$HEAD_BRANCH" main; do
+          for c in "$BRANCH" main; do
             [ -z "$c" ] && continue
             if gh api "repos/nezumi0627/vyline/branches/$c" >/dev/null 2>&1; then
               REF="$c"
