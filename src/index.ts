@@ -7,7 +7,8 @@
  *
  * 機能→ファイル地図: ./modules.map.ts
  * Desktop 差分 CLI:   ./tools/reportDesktopDelta.ts
- * 同時ログイン調査:   docs/analysis/dual-login-desktop.md
+ * 同時ログイン調査:   vyline モノレポ docs/analysis/dual-login-desktop.md
+ *                     https://github.com/nezumi0627/vyline/blob/main/docs/analysis/dual-login-desktop.md
  */
 
 // ── Types ──────────────────────────────────────────────

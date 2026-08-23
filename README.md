@@ -1,11 +1,15 @@
-# @vyline/protocol (Vyline)
+# @vyline/protocol (vyline-api)
 
-identity / E2EE を追従しつつ、セッションは副端末で公式 Desktop と併存できるパッケージ。
+[nezumi0627/vyline](https://github.com/nezumi0627/vyline) モノレポの `packages/protocol` から切り出された LINE プロトコルパッケージ。identity / E2EE を追従しつつ、セッションは副端末で公式 Desktop と併存できる。
 
 - **既定**: `IOSIPAD`（公式 `DESKTOPWIN` と同時ログイン可）
 - **オプトイン**: `VYLINE_DEVICE=DESKTOPWIN` で Desktop 関数レベル完全エミュ（公式を蹴る）
 
-同時ログイン調査: リポジトリ `docs/analysis/dual-login-desktop.md`
+同時ログイン調査: [vyline モノレポ docs/analysis/dual-login-desktop.md](https://github.com/nezumi0627/vyline/blob/main/docs/analysis/dual-login-desktop.md)
+
+> [!NOTE]
+> 本リポジトリ単体では workspace 依存 (`@vyline/line-types` / `@vyline/loose-types`) を解決できません。
+> typecheck / lint / build は「[ローカル開発](#ローカル開発)」の手順でワークスペースを組み立ててから実行してください。
 
 ---
 
@@ -51,9 +55,9 @@ VylineClient (@vyline/protocol/stack + Desktop patches)
 | RPC 辞書               | `src/dictionary/rpcMap.ts`                        |
 | Desktop 差分 CLI       | `src/tools/reportDesktopDelta.ts`                 |
 
-ドキュメント: [protocol/dictionary.md](../../docs/protocol/dictionary.md) / [CONTRIBUTING.md](../../docs/CONTRIBUTING.md)
+ドキュメント: [docs/protocol/dictionary.md](https://github.com/nezumi0627/vyline/blob/main/docs/protocol/dictionary.md) / [docs/CONTRIBUTING.md](https://github.com/nezumi0627/vyline/blob/main/docs/CONTRIBUTING.md)
 
-Backend は `Vyline/backend/src/vyline/profileBridge.ts` 経由で `VylineUpdater` を起動時に初期化する。
+Backend (アプリ本体) は vyline モノレポ側にあり、`Vyline/backend/src/vyline/profileBridge.ts` 経由で `VylineUpdater` を起動時に初期化する。
 
 ---
 
@@ -71,7 +75,7 @@ Backend は `Vyline/backend/src/vyline/profileBridge.ts` 経由で `VylineUpdate
 1. `getRSAKeyInfo` → **必ず** `/api/v3/TalkService.do` (v4 は x-lc:400)
 2. `loginV2` / `confirmE2EELogin` → `/api/v3p/rs` (Desktop は v3p。v4p は Android 系)
 3. `/LF1` で keychain 取得 → `decodeE2EEKeyV1` パッチが keychain 内の**全鍵**を保存
-4. 詳細フローはリポジトリの `docs/login-flow.md`
+4. 詳細フローは [vyline モノレポ docs/login-flow.md](https://github.com/nezumi0627/vyline/blob/main/docs/login-flow.md)
 
 ### Token
 
@@ -117,7 +121,7 @@ Host: legy-jp.line-apps.com
 
 既定の Desktop 鍵ダンプ置き場:
 
-- `Vyline/backend/data/desktop-e2ee-keys.json` (gitignore)
+- vyline モノレポ backend の `data/desktop-e2ee-keys.json` (gitignore)
 
 ログイン**前**の履歴は、Desktop と同じ自己鍵が揃っていないと復号できないことがある。  
 送信はサーバ最新 `keyId` の秘密鍵が必須。無いと `E2EE_UPDATE_SENDER_KEY`。
@@ -133,33 +137,50 @@ Host: legy-jp.line-apps.com
 2. **Desktop 更新で壊れた**
 
    ```powershell
-   bun run vyline:delta
+   bun run delta
    ```
 
    レポートの suggested modules を優先度順に確認する。  
-   手順: `docs/tools/desktop-delta.md`
+   手順: [vyline モノレポ docs/tools/desktop-delta.md](https://github.com/nezumi0627/vyline/blob/main/docs/tools/desktop-delta.md)
 
 3. **ヘッダーだけ追従したい**
    - `VylineUpdater.refresh()` または backend `POST /debug/vyline/refresh`
 
 4. **RPC パスが変わった**
    - `LINE.exe` で strings 検索 → `patchTransport.ts` / `patchLogin.ts` を更新
-   - 結果を `docs/analysis/<feature>.md` に残す
+   - 結果を vyline モノレポの `docs/analysis/<feature>.md` に記録する
 
 ---
 
-## 開発コマンド
+## ローカル開発
+
+CI (.github/workflows/ci.yml) と同じ手順で、兄弟パッケージを並べたワークスペースを組み立てる:
 
 ```powershell
-# パッケージ単体
-cd Vyline/packages/protocol
-bun run delta
+# 1) 本リポジトリと vyline モノレポの兄弟パッケージを並べる
+git clone https://github.com/nezumi0627/vyline-api.git
+cd ..
+mkdir ws ; cd ws
+git clone https://github.com/nezumi0627/vyline-api.git packages/protocol
+git clone --depth 1 --filter=blob:none --sparse https://github.com/nezumi0627/vyline.git monorepo
+cd monorepo
+git sparse-checkout set Vyline/packages/line-types Vyline/packages/loose-types
+cd ..
+move monorepo\Vyline\packages\line-types packages\line-types
+move monorepo\Vyline\packages\loose-types packages\loose-types
 
-# リポジトリルート
-bun run vyline:delta
+# 2) ルート package.json を作成して bun install
+echo {"name":"ws","private":true,"workspaces":["packages/*"]} > package.json
+bun install
+
+# 3) 検証
+cd packages/protocol
+bun run typecheck
+bun run lint
+bun run build
 ```
 
-依存: 内部 `stack/`（Thrift RPC）、`@vyline/line-types`（型のみ vendored）。backend は workspace 経由で `@vyline/protocol` を利用。
+依存: 内部 `stack/`（Thrift RPC）、workspace 兄弟パッケージ `@vyline/line-types` / `@vyline/loose-types`（型）。vyline モノレポ backend は workspace 経由で `@vyline/protocol` を利用する。
 
 ---
 
@@ -175,7 +196,7 @@ bun run vyline:delta
 | Talk     | `src/domain/talk.ts`     | 送信・取消・既読                           |
 | Session  | `src/domain/session.ts`  | 上記をまとめた `VylineSession`             |
 
-backend は `lineService.ts` から `wrapSession` 経由で利用。HTTP は `backend/src/api/line.ts`。
+backend (vyline モノレポ) は `lineService.ts` から `wrapSession` 経由で利用。HTTP はモノレポの `backend/src/api/line.ts`。
 
 ---
 

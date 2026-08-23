@@ -1,9 +1,8 @@
 /**
  * reportDesktopDelta — インストール済み LINE Desktop とキャッシュ profile の差分レポート
  *
- * 使い方 (リポジトリルート):
- *   bun run vyline:delta
- *   bun Vyline/packages/protocol/src/tools/reportDesktopDelta.ts
+ * 使い方 (本リポジトリルート):
+ *   bun run delta
  *
  * 出力:
  *   docs/reports/desktop-delta-YYYYMMDD.md
@@ -192,9 +191,7 @@ export function buildDesktopDeltaReport(opts?: {
     : suggestedFeaturesOnDesktopUpdate().filter((f) => f.priority === "high");
 
   if (!suggestAll) {
-    notes.push(
-      "差分なしのため high priority モジュールのみ列挙 (全件は bun run vyline:delta -- --all)",
-    );
+    notes.push("差分なしのため high priority モジュールのみ列挙 (全件は bun run delta -- --all)");
   }
 
   return {
@@ -317,11 +314,15 @@ function renderMarkdown(report: DesktopDeltaReport): string {
   lines.push("");
   lines.push("1. 上記モジュールを優先度順に確認する");
   lines.push("2. LINE.exe から searchStrings を strings / メモリダンプで探す");
-  lines.push("3. 差分があれば `docs/analysis/<feature>.md` にメモし、対応ソースを直す");
+  lines.push(
+    "3. 差分があれば vyline モノレポの `docs/analysis/<feature>.md` にメモし、対応ソースを直す",
+  );
   lines.push("4. 必要なら VylineUpdater.refresh() または `POST /debug/vyline/refresh`");
   lines.push(`5. CDN: ${report.cdnUpdateInfoUrl}`);
   lines.push("");
-  lines.push("詳細: [docs/tools/desktop-delta.md](../tools/desktop-delta.md)");
+  lines.push(
+    "詳細: [docs/tools/desktop-delta.md](https://github.com/nezumi0627/vyline/blob/main/docs/tools/desktop-delta.md)",
+  );
   lines.push("");
   return lines.join("\n");
 }
