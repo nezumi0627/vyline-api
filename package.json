@@ -37,7 +37,7 @@
     "decrypt-edb": "bun ./src/tools/decryptDesktopEdb.ts",
     "extract-desktop-e2ee-keys": "bun ./src/tools/extractDesktopE2EEKeys.ts",
     "stack:types": "tsc -p stack/tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@noble/ciphers": "^2.2",
