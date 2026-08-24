@@ -1,13 +1,14 @@
 /**
  * @vyline/protocol — LINE 互換レイヤ + Desktop 追従 (VylineUpdater)
  *
- * 既定セッション: ANDROIDSECONDARY（公式 DESKTOPWIN と同時ログイン可）
+ * 既定セッション: IOSIPAD（公式 DESKTOPWIN と同時ログイン可）
  * Desktop 完全エミュ: VYLINE_DEVICE=DESKTOPWIN（公式 Desktop を蹴る）
  * Desktop の identity / E2EE 鍵の正はインストール済み LINE.exe 側。
  *
  * 機能→ファイル地図: ./modules.map.ts
  * Desktop 差分 CLI:   ./tools/reportDesktopDelta.ts
- * 同時ログイン調査:   docs/analysis/dual-login-desktop.md
+ * 同時ログイン調査:   vyline モノレポ docs/analysis/dual-login-desktop.md
+ *                     https://github.com/nezumi0627/vyline/blob/main/docs/analysis/dual-login-desktop.md
  */
 
 // ── Types ──────────────────────────────────────────────
@@ -97,6 +98,10 @@ export {
   importDesktopE2EEKeys,
   loadDesktopE2EEKeyDump,
   defaultDesktopE2EEKeysPath,
+  normalizeDesktopE2EEKey,
+  loadSbcBackupKeyDumps,
+  mergeDesktopE2EEKeyDumps,
+  derivePubKey,
 } from "./login/importDesktopE2EE.js";
 export {
   ensureGroupKeyById,

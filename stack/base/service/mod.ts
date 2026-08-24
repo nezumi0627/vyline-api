@@ -9,7 +9,7 @@ export { ChatAppService } from "./chatapp/mod.js";
 export { CoinService } from "./coin/mod.js";
 export { DeviceAttestationService } from "./deviceattestation/mod.js";
 export { E2EEKeyBackupService } from "./e2eekeybackup/mod.js";
-export { HomeSafetyCheckService } from "./homesafetycheck/mod.js";
+export { E2EELifetimeKeyBackupService } from "./e2eelifetimekeybackup/mod.js";export { HomeSafetyCheckService } from "./homesafetycheck/mod.js";
 export { LiffService } from "./liff/mod.js";
 export { MultiProfileService } from "./multiprofile/mod.js";
 export { OaChatService } from "./oachat/mod.js";

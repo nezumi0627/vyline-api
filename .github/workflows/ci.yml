@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: Typecheck / Lint / Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workspace
+    steps:
+      # このリポジトリは親 monorepo (nezumi0627/vyline) の packages/protocol。
+      # workspace:* の依存 (@vyline/line-types / @vyline/loose-types) を解決するため
+      # 単一ワークスペースを組み立ててから bun install する。
+      #
+      # マージ順序の制約（protocol 先マージ → monorepo 後マージ）のため、PR 中は
+      # line-types の新しい型が親 main にまだ無いことがある。同名ブランチが親に
+      # 存在すればそれを使い、無ければ main にフォールバックする。
+      - uses: actions/checkout@v4
+        with:
+          path: workspace/packages/protocol
+
+      - name: Resolve sibling monorepo ref
+        id: sibref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Determine branch: PR uses head_ref, workflow_dispatch uses ref (refs/heads/<branch>)
+          if [ -n "${{ github.head_ref }}" ]; then
+            BRANCH="${{ github.head_ref }}"
+          else
+            BRANCH="${{ github.ref }}"
+            BRANCH="${BRANCH#refs/heads/}"
+          fi
+          REF="main"
+          for c in "$BRANCH" main; do
+            [ -z "$c" ] && continue
+            if gh api "repos/nezumi0627/vyline/branches/$c" >/dev/null 2>&1; then
+              REF="$c"
+              break
+            fi
+          done
+          echo "sibling monorepo ref: $REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout sibling packages from monorepo
+        uses: actions/checkout@v4
+        with:
+          repository: nezumi0627/vyline
+          ref: ${{ steps.sibref.outputs.ref }}
+          sparse-checkout: |
+            Vyline/packages/line-types
+            Vyline/packages/loose-types
+          path: monorepo
+
+      - name: Assemble workspace
+        run: |
+          mv "$GITHUB_WORKSPACE/monorepo/Vyline/packages/line-types" packages/
+          mv "$GITHUB_WORKSPACE/monorepo/Vyline/packages/loose-types" packages/
+          cat > package.json <<'EOF'
+          {
+            "name": "vyline-api-ci",
+            "private": true,
+            "workspaces": ["packages/*"]
+          }
+          EOF
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck (src)
+        run: bun run --cwd packages/protocol typecheck
+
+      - name: Lint (biome)
+        run: bun run --cwd packages/protocol lint
+
+      - name: Build (stack .d.ts)
+        run: bun run --cwd packages/protocol build

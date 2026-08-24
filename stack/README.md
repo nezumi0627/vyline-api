@@ -7,10 +7,9 @@
 - E2EE: `letterSealing`（protocol）+ stack `e2ee/`
 - OBS: stack `obs/`
 
-型定義ビルド:
+型定義ビルド (本リポジトリのルートで):
 
 ```powershell
-cd Vyline/packages/protocol
 bun run stack:types
 ```
 

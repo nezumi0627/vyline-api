@@ -9,7 +9,7 @@
  * 2. keyId / publicKey / privateKey をパース
  * 3. Curve25519 でペア検証 → desktop-e2ee-keys-{accountId}.json に保存
  *
- * 実行: bun Vyline/packages/protocol/src/tools/extractDesktopE2EEKeys.ts
+ * 実行: bun src/tools/extractDesktopE2EEKeys.ts (または bun run extract-desktop-e2ee-keys)
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

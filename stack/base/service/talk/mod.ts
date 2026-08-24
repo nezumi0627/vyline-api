@@ -136,7 +136,7 @@ export class TalkService implements BaseService {
         relatedMessageId,
         messageRelationType,
         e2ee,
-        chunks: encrypted.chunks,
+        chunks: encrypted,
       };
       return this.sendMessage(next);
     }
