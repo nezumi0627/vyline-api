@@ -14,6 +14,7 @@ import type { AuthTokenInput } from "../request/auth_token.ts";
 import { E2EE } from "../e2ee/mod.js";
 import { LineObs } from "../obs/mod.js";
 import { Timeline } from "../timeline/mod.js";
+import { Album } from "../album/mod.js";
 import { Polling } from "../polling/mod.js";
 import { ConnManager } from "../push/mod.js";
 import type * as LINETypes from "@vyline/line-types";
@@ -91,6 +92,7 @@ export declare class BaseClient extends TypedEventEmitter<ClientEvents> {
     readonly e2ee: E2EE;
     readonly obs: LineObs;
     readonly timeline: Timeline;
+    readonly album: Album;
     readonly poll: Polling;
     readonly push: ConnManager;
     readonly auth: AuthService;
