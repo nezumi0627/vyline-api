@@ -78,6 +78,18 @@ export class SquareService implements BaseService {
     );
   }
 
+  async getMessageReactions(
+    ...param: Parameters<typeof LINEStruct.SquareService_getMessageReactions_args>
+  ): Promise<LINETypes.SquareService_getMessageReactions_result["success"]> {
+    return await this.client.request.request(
+      LINEStruct.SquareService_getMessageReactions_args(...param),
+      "getMessageReactions",
+      this.protocolType,
+      true,
+      this.requestPath,
+    );
+  }
+
   async findSquareByInvitationTicket(
     ...param: Parameters<typeof LINEStruct.SquareService_findSquareByInvitationTicket_args>
   ): Promise<LINETypes.SquareService_findSquareByInvitationTicket_result["success"]> {
@@ -939,6 +951,18 @@ export class SquareService implements BaseService {
         },
       }),
       "searchSquareChatMembers",
+      this.protocolType,
+      true,
+      this.requestPath,
+    );
+  }
+
+  async searchSquareChatMentionables(
+    ...param: Parameters<typeof LINEStruct.SquareService_searchSquareChatMentionables_args>
+  ): Promise<LINETypes.SquareService_searchSquareChatMentionables_result["success"]> {
+    return await this.client.request.request(
+      LINEStruct.SquareService_searchSquareChatMentionables_args(...param),
+      "searchSquareChatMentionables",
       this.protocolType,
       true,
       this.requestPath,
