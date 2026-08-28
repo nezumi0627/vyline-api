@@ -16,6 +16,7 @@ export declare class SquareService implements BaseService {
     }): Promise<LINETypes.SquareService_getJoinedSquares_result["success"]>;
     markAsRead(...param: Parameters<typeof LINEStruct.SquareService_markAsRead_args>): Promise<LINETypes.SquareService_markAsRead_result["success"]>;
     reactToMessage(...param: Parameters<typeof LINEStruct.SquareService_reactToMessage_args>): Promise<LINETypes.SquareService_reactToMessage_result["success"]>;
+    getMessageReactions(...param: Parameters<typeof LINEStruct.SquareService_getMessageReactions_args>): Promise<LINETypes.SquareService_getMessageReactions_result["success"]>;
     findSquareByInvitationTicket(...param: Parameters<typeof LINEStruct.SquareService_findSquareByInvitationTicket_args>): Promise<LINETypes.SquareService_findSquareByInvitationTicket_result["success"]>;
     fetchMyEvents(options: {
         syncToken?: string;
@@ -139,6 +140,7 @@ export declare class SquareService implements BaseService {
         squareChatMid: string;
         limit?: number;
     }): Promise<LINETypes.SquareService_searchSquareChatMembers_result["success"]>;
+    searchSquareChatMentionables(...param: Parameters<typeof LINEStruct.SquareService_searchSquareChatMentionables_args>): Promise<LINETypes.SquareService_searchSquareChatMentionables_result["success"]>;
     getSquareChatFeatureSet(...param: Parameters<typeof LINEStruct.SquareService_getSquareChatFeatureSet_args>): Promise<LINETypes.SquareService_getSquareChatFeatureSet_result["success"]>;
     getSquareEmid(...param: Parameters<typeof LINEStruct.SquareService_getSquareEmid_args>): Promise<LINETypes.SquareService_getSquareEmid_result["success"]>;
     getSquareMembersBySquare(...param: Parameters<typeof LINEStruct.SquareService_getSquareMembersBySquare_args>): Promise<LINETypes.SquareService_getSquareMembersBySquare_result["success"]>;
