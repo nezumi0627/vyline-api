@@ -1,5 +1,13 @@
 import { assertEquals } from "@vyline/protocol/stack/assert";
-import { flex, image, sticker, text } from "./liff.ts";
+import {
+  flex,
+  image,
+  prepareSendMessage,
+  sticker,
+  text,
+  withAttribution,
+  withSender,
+} from "./liff.ts";
 
 Deno.test("liff.text — plain", () => {
   assertEquals(text("hi"), { type: "text", text: "hi" });
@@ -22,6 +30,74 @@ Deno.test("liff.text — with sentBy", () => {
   });
 });
 
+Deno.test("liff.withSender — adds LIFF sender metadata without changing the source", () => {
+  const source = text("Hello!");
+  const message = withSender(source, {
+    name: "Cony",
+    iconUrl: "https://example.test/icon.png",
+  });
+
+  assertEquals(source, { type: "text", text: "Hello!" });
+  assertEquals(message, {
+    type: "text",
+    text: "Hello!",
+    sender: {
+      name: "Cony",
+      iconUrl: "https://example.test/icon.png",
+    },
+  });
+});
+
+Deno.test("liff.withAttribution — keeps the public sender input shape", () => {
+  const source = text("Hello!");
+  const message = withAttribution(source, {
+    name: "Cony",
+    iconUrl: "https://example.test/icon.png",
+    linkUrl: "https://example.test/profile",
+  });
+
+  assertEquals(source, { type: "text", text: "Hello!" });
+  assertEquals(message, {
+    type: "text",
+    text: "Hello!",
+    sender: {
+      name: "Cony",
+      iconUrl: "https://example.test/icon.png",
+      linkUrl: "https://example.test/profile",
+    },
+  });
+});
+
+Deno.test("liff.withAttribution — supports name-only sender metadata", () => {
+  assertEquals(withAttribution(text("Hello!"), { name: "Cony" }), {
+    type: "text",
+    text: "Hello!",
+    sender: { name: "Cony" },
+  });
+});
+
+Deno.test("liff.sendLiff JSON shape — normalizes sender into LINE sentBy", () => {
+  assertEquals(
+    prepareSendMessage({
+      type: "text",
+      text: "Hello!",
+      sender: {
+        name: "Cony",
+        iconUrl: "https://example.test/icon.png",
+        linkUrl: "https://example.test/profile",
+      },
+    }),
+    {
+      type: "text",
+      text: "Hello!",
+      sentBy: {
+        label: "Cony",
+        iconUrl: "https://example.test/icon.png",
+        linkUrl: "https://example.test/profile",
+      },
+    },
+  );
+});
 Deno.test("liff.sticker", () => {
   assertEquals(sticker("11537", "52002734"), {
     type: "sticker",

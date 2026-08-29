@@ -15,6 +15,35 @@ export interface LiffTextMessage {
   text: string;
   sentBy?: { label: string; iconUrl: string; linkUrl?: string };
 }
+
+/** User-facing sender metadata. It is normalized to LINE's `sentBy` wire shape. */
+export interface LiffSender {
+  name: string;
+  iconUrl?: string;
+  linkUrl?: string;
+}
+
+export interface LiffAttribution {
+  name: string;
+  iconUrl?: string;
+  linkUrl?: string;
+}
+
+export type LiffSendMessage = LiffMessage & {
+  sender?: LiffAttribution;
+};
+
+export interface LiffSendOptions {
+  liffId?: string;
+  forceIssue?: boolean;
+}
+export type LiffMessageWithSender<T extends LiffMessage = LiffMessage> = T & {
+  sender: LiffSender;
+};
+
+export type LiffMessageWithAttribution<T extends LiffMessage = LiffMessage> = T & {
+  sender: LiffSender;
+};
 export interface LiffStickerMessage {
   type: "sticker";
   packageId: string;
@@ -55,6 +84,41 @@ export function flex(altText: string, contents: Record<string, unknown>): LiffFl
   return { type: "flex", altText, contents };
 }
 
+/** Attach the user-facing sender metadata without mutating the original message. */
+export function withSender<T extends LiffMessage>(
+  message: T,
+  sender: LiffSender,
+): LiffMessageWithSender<T> {
+  return { ...message, sender };
+}
+
+/** Backward-compatible helper for attaching display attribution. */
+export function withAttribution<T extends LiffMessage>(
+  message: T,
+  attribution: LiffAttribution,
+): LiffMessageWithAttribution<T> {
+  return {
+    ...message,
+    sender: {
+      name: attribution.name,
+      ...(attribution.iconUrl ? { iconUrl: attribution.iconUrl } : {}),
+      ...(attribution.linkUrl ? { linkUrl: attribution.linkUrl } : {}),
+    },
+  };
+}
+
+export function prepareSendMessage(message: LiffSendMessage): LiffMessage {
+  if (!message.sender) return message;
+  const { sender, ...base } = message;
+  return {
+    ...base,
+    sentBy: {
+      label: sender.name,
+      iconUrl: sender.iconUrl ?? "",
+      ...(sender.linkUrl ? { linkUrl: sender.linkUrl } : {}),
+    },
+  };
+}
 export interface LiffClient {
   readonly defaultLiffId: string;
   setDefaultLiffId(liffId: string): void;
@@ -69,14 +133,15 @@ export interface LiffClient {
   ): ReturnType<import("../../base/service/liff/mod.ts").LiffService["issueSubLiffView"]>;
   shareMessages(
     to: string,
-    messages: LiffMessage[],
-    opts?: { liffId?: string; forceIssue?: boolean },
+    messages: LiffSendMessage[],
+    opts?: LiffSendOptions,
   ): Promise<unknown>;
   shareMessage(
     to: string,
-    message: LiffMessage,
-    opts?: { liffId?: string; forceIssue?: boolean },
+    message: LiffSendMessage,
+    opts?: LiffSendOptions,
   ): Promise<unknown>;
+  sendLiff(to: string, message: LiffSendMessage, opts?: LiffSendOptions): Promise<unknown>;
   readonly service: import("../../base/service/liff/mod.ts").LiffService;
 }
 
@@ -118,17 +183,22 @@ class ClientLiff implements LiffClient {
   }
   async shareMessages(
     to: string,
-    messages: LiffMessage[],
-    opts: { liffId?: string; forceIssue?: boolean } = {},
+    messages: LiffSendMessage[],
+    opts: LiffSendOptions = {},
   ) {
+    const preparedMessages = messages.map(prepareSendMessage);
     return await this.#client.base.liff.sendLiff({
       to,
-      messages: messages as never,
+      messages: preparedMessages as never,
+      liffId: opts.liffId,
       forceIssue: opts.forceIssue,
     });
   }
-  shareMessage(to: string, message: LiffMessage, opts?: { liffId?: string; forceIssue?: boolean }) {
+  shareMessage(to: string, message: LiffSendMessage, opts?: LiffSendOptions) {
     return this.shareMessages(to, [message], opts);
+  }
+  sendLiff(to: string, message: LiffSendMessage, opts?: LiffSendOptions) {
+    return this.shareMessage(to, message, opts);
   }
 }
 
