@@ -28,10 +28,19 @@ export interface LiffSender {
   iconUrl?: string;
 }
 
+export interface LiffAttribution {
+  name: string;
+  iconUrl?: string;
+  linkUrl?: string;
+}
 export type LiffMessageWithSender<T extends LiffMessage = LiffMessage> = T & {
   sender: LiffSender;
 };
 
+export type LiffMessageWithAttribution<T extends LiffMessage = LiffMessage> = T & {
+  sender: LiffSender;
+  sentBy?: { label: string; iconUrl: string; linkUrl?: string };
+};
 export interface LiffStickerMessage {
   type: "sticker";
   packageId: string;
@@ -80,6 +89,32 @@ export function withSender<T extends LiffMessage>(
   return { ...message, sender };
 }
 
+/**
+ * Attach display attribution using LINE's official `sender` fields.
+ * When a link is requested, mirror the same label/icon into legacy `sentBy`
+ * because `sender` has no URL field.
+ */
+export function withAttribution<T extends LiffMessage>(
+  message: T,
+  attribution: LiffAttribution,
+): LiffMessageWithAttribution<T> {
+  const sender: LiffSender = {
+    name: attribution.name,
+    ...(attribution.iconUrl ? { iconUrl: attribution.iconUrl } : {}),
+  };
+
+  if (!attribution.linkUrl) return { ...message, sender };
+
+  return {
+    ...message,
+    sender,
+    sentBy: {
+      label: attribution.name,
+      iconUrl: attribution.iconUrl ?? "",
+      linkUrl: attribution.linkUrl,
+    },
+  };
+}
 export interface LiffClient {
   readonly defaultLiffId: string;
   setDefaultLiffId(liffId: string): void;

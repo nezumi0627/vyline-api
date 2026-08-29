@@ -1,5 +1,5 @@
 import { assertEquals } from "@vyline/protocol/stack/assert";
-import { flex, image, sticker, text, withSender } from "./liff.ts";
+import { flex, image, sticker, text, withAttribution, withSender } from "./liff.ts";
 
 Deno.test("liff.text — plain", () => {
   assertEquals(text("hi"), { type: "text", text: "hi" });
@@ -40,6 +40,37 @@ Deno.test("liff.withSender — adds LIFF sender metadata without changing the so
   });
 });
 
+Deno.test("liff.withAttribution — uses sender for name/icon and sentBy only for URL", () => {
+  const source = text("Hello!");
+  const message = withAttribution(source, {
+    name: "Cony",
+    iconUrl: "https://example.test/icon.png",
+    linkUrl: "https://example.test/profile",
+  });
+
+  assertEquals(source, { type: "text", text: "Hello!" });
+  assertEquals(message, {
+    type: "text",
+    text: "Hello!",
+    sender: {
+      name: "Cony",
+      iconUrl: "https://example.test/icon.png",
+    },
+    sentBy: {
+      label: "Cony",
+      iconUrl: "https://example.test/icon.png",
+      linkUrl: "https://example.test/profile",
+    },
+  });
+});
+
+Deno.test("liff.withAttribution — does not emit legacy sentBy without URL", () => {
+  assertEquals(withAttribution(text("Hello!"), { name: "Cony" }), {
+    type: "text",
+    text: "Hello!",
+    sender: { name: "Cony" },
+  });
+});
 Deno.test("liff.sticker", () => {
   assertEquals(sticker("11537", "52002734"), {
     type: "sticker",
