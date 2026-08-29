@@ -150,6 +150,7 @@ export class LiffService implements BaseService {
   public async sendLiff(options: {
     to: string;
     messages: { type: string; text?: string }[];
+    liffId?: string;
     tryConsent?: boolean;
     forceIssue?: boolean;
   }): Promise<LooseType> {
@@ -157,6 +158,7 @@ export class LiffService implements BaseService {
     const {
       to,
       messages,
+      liffId,
       tryConsent: _tryConsent,
       forceIssue,
     } = {
@@ -167,7 +169,7 @@ export class LiffService implements BaseService {
     if (!this.liffTokenCache[to] || forceIssue) {
       token = await this.getLiffToken({
         chatMid: to,
-        liffId: this.liffId,
+        liffId: liffId ?? this.liffId,
       });
     } else {
       token = this.liffTokenCache[to];

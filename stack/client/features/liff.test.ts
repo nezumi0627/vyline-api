@@ -1,5 +1,13 @@
 import { assertEquals } from "@vyline/protocol/stack/assert";
-import { flex, image, sticker, text, withAttribution, withSender } from "./liff.ts";
+import {
+  flex,
+  image,
+  prepareSendMessage,
+  sticker,
+  text,
+  withAttribution,
+  withSender,
+} from "./liff.ts";
 
 Deno.test("liff.text — plain", () => {
   assertEquals(text("hi"), { type: "text", text: "hi" });
@@ -70,6 +78,33 @@ Deno.test("liff.withAttribution — does not emit legacy sentBy without URL", ()
     text: "Hello!",
     sender: { name: "Cony" },
   });
+});
+
+Deno.test("liff.sendLiff JSON shape — normalizes sender linkUrl into sentBy", () => {
+  assertEquals(
+    prepareSendMessage({
+      type: "text",
+      text: "Hello!",
+      sender: {
+        name: "Cony",
+        iconUrl: "https://example.test/icon.png",
+        linkUrl: "https://example.test/profile",
+      },
+    }),
+    {
+      type: "text",
+      text: "Hello!",
+      sender: {
+        name: "Cony",
+        iconUrl: "https://example.test/icon.png",
+      },
+      sentBy: {
+        label: "Cony",
+        iconUrl: "https://example.test/icon.png",
+        linkUrl: "https://example.test/profile",
+      },
+    },
+  );
 });
 Deno.test("liff.sticker", () => {
   assertEquals(sticker("11537", "52002734"), {

@@ -33,6 +33,15 @@ export interface LiffAttribution {
   iconUrl?: string;
   linkUrl?: string;
 }
+
+export type LiffSendMessage = LiffMessage & {
+  sender?: LiffAttribution;
+};
+
+export interface LiffSendOptions {
+  liffId?: string;
+  forceIssue?: boolean;
+}
 export type LiffMessageWithSender<T extends LiffMessage = LiffMessage> = T & {
   sender: LiffSender;
 };
@@ -115,6 +124,12 @@ export function withAttribution<T extends LiffMessage>(
     },
   };
 }
+
+export function prepareSendMessage(message: LiffSendMessage): LiffMessage {
+  if (!message.sender) return message;
+  const { sender, ...base } = message;
+  return withAttribution(base as LiffMessage, sender);
+}
 export interface LiffClient {
   readonly defaultLiffId: string;
   setDefaultLiffId(liffId: string): void;
@@ -129,14 +144,15 @@ export interface LiffClient {
   ): ReturnType<import("../../base/service/liff/mod.ts").LiffService["issueSubLiffView"]>;
   shareMessages(
     to: string,
-    messages: LiffMessage[],
-    opts?: { liffId?: string; forceIssue?: boolean },
+    messages: LiffSendMessage[],
+    opts?: LiffSendOptions,
   ): Promise<unknown>;
   shareMessage(
     to: string,
-    message: LiffMessage,
-    opts?: { liffId?: string; forceIssue?: boolean },
+    message: LiffSendMessage,
+    opts?: LiffSendOptions,
   ): Promise<unknown>;
+  sendLiff(to: string, message: LiffSendMessage, opts?: LiffSendOptions): Promise<unknown>;
   readonly service: import("../../base/service/liff/mod.ts").LiffService;
 }
 
@@ -178,17 +194,22 @@ class ClientLiff implements LiffClient {
   }
   async shareMessages(
     to: string,
-    messages: LiffMessage[],
-    opts: { liffId?: string; forceIssue?: boolean } = {},
+    messages: LiffSendMessage[],
+    opts: LiffSendOptions = {},
   ) {
+    const preparedMessages = messages.map(prepareSendMessage);
     return await this.#client.base.liff.sendLiff({
       to,
-      messages: messages as never,
+      messages: preparedMessages as never,
+      liffId: opts.liffId,
       forceIssue: opts.forceIssue,
     });
   }
-  shareMessage(to: string, message: LiffMessage, opts?: { liffId?: string; forceIssue?: boolean }) {
+  shareMessage(to: string, message: LiffSendMessage, opts?: LiffSendOptions) {
     return this.shareMessages(to, [message], opts);
+  }
+  sendLiff(to: string, message: LiffSendMessage, opts?: LiffSendOptions) {
+    return this.shareMessage(to, message, opts);
   }
 }
 
