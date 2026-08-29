@@ -83,6 +83,7 @@ export {
   loginWithEmail,
   loginWithQR,
   loginWithToken,
+  loginWithStoredRefreshToken,
   sendText,
   applyDesktopHeaders,
   getDesktopPcIdentity,

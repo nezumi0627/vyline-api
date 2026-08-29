@@ -30,6 +30,8 @@ export declare class Timeline {
         mediaObjectIds?: string[];
         mediaObjectTypes?: string[];
         sourceType?: string;
+        contents?: LooseType;
+        postInfo?: LooseType;
     }): Promise<TimelineResponse>;
     deletePost(options: {
         homeId: string;
@@ -44,6 +46,8 @@ export declare class Timeline {
         postId?: string;
         updatedTime?: number;
         sourceType?: string;
+        postLimit?: number;
+        showVideoPostsOnly?: boolean;
     }): Promise<TimelineResponse>;
     updatePost(options: {
         homeId: string;
@@ -61,11 +65,26 @@ export declare class Timeline {
         locationNames?: string[];
         mediaObjectIds?: string[];
         mediaObjectTypes?: string[];
+        contents?: LooseType;
     }): Promise<TimelineResponse>;
     likePost(options: {
         contentId: string;
         homeId: string;
         likeType?: "1003" | "1001" | "1002" | "1004" | "1006" | "1005";
+        sourceType?: string;
+    }): Promise<TimelineResponse>;
+    unlikePost(options: {
+        contentId: string;
+        homeId: string;
+        sourceType?: string;
+    }): Promise<TimelineResponse>;
+    getLike(options: {
+        contentId: string;
+        homeId: string;
+    }): Promise<TimelineResponse>;
+    listLikes(options: {
+        contentId: string;
+        homeId: string;
         sourceType?: string;
     }): Promise<TimelineResponse>;
     createComment(options: {
@@ -77,20 +96,10 @@ export declare class Timeline {
     }): Promise<TimelineResponse>;
     sharePost(options: {
         postId: string;
-        chatMid: string;
         homeId: string;
     }): Promise<TimelineResponse>;
-    /**
-     * Uploads an image or video into the myhome OBS space so it can be attached
-     * to a Note post via {@link createPost}'s `mediaObjectIds` / `mediaObjectTypes`
-     * (e.g. `mediaObjectTypes: ["PHOTO"]` for an image, `["VIDEO"]` for a video).
-     *
-     * Note media does NOT go through `obs.uploadObjectForService` — that hits
-     * `/r/{obsPath}`, which the myhome edge rejects with 403. Notes use the legacy
-     * `.nhn` upload endpoint, authenticated with the timeline channel token (see
-     * {@link initTimeline}); the object id is chosen client-side and echoed back as
-     * `x-obs-oid`.
-     */
+    getGroupHomeUpdates(revision: number): Promise<TimelineResponse>;
+    /** Upload Note post media using the current iOS/iPad OBS path. */
     uploadNoteMedia(type: "image" | "video", data: Blob): Promise<{
         objId: string;
         objHash: string;

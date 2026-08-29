@@ -54,14 +54,14 @@ export function getDeviceDetails(device: Device, version?: string): DeviceDetail
       systemVersion = "16";
       break;
     case "IOS":
-      appVersion = version || "26.7.2";
+      appVersion = version || "26.12.1";
       systemName = "iOS";
-      systemVersion = "18.0";
+      systemVersion = "26.1";
       break;
     case "IOSIPAD":
-      appVersion = version || "26.7.2";
+      appVersion = version || "26.12.1";
       systemName = "iOS";
-      systemVersion = "18.0";
+      systemVersion = "26.1";
       break;
     case "WATCHOS":
       appVersion = version || "26.7.2";
