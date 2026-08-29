@@ -4,6 +4,8 @@ import crypto from "node:crypto";
 import type { BaseClient } from "../mod.ts";
 import type { LooseType } from "@vyline/loose-types";
 
+const CONTENT_GATEWAY = "legy-jp.line-apps.com";
+
 export type TimelineResponse<T = LooseType> = {
   code: number;
   message: string;
@@ -22,11 +24,15 @@ export class Timeline {
     if (this.timelineToken) {
       return;
     }
-    this.timelineToken = (
-      await this.client.channel.approveChannelAndIssueChannelToken({
-        channelId: "1341209850",
-      })
-    ).channelAccessToken;
+    const channelToken = await this.client.channel.issueChannelToken({
+      channelId: "1341209850",
+    });
+    this.timelineToken =
+      (channelToken as { channelAccessToken?: string }).channelAccessToken ??
+      (channelToken as { token?: string }).token;
+    if (!this.timelineToken) {
+      throw new Error("Timeline channel token was not issued");
+    }
     this.timelineHeaders = {
       "x-line-bdbtemplateversion": "v1",
       "x-lsr": "JP",
@@ -61,6 +67,8 @@ export class Timeline {
     mediaObjectIds?: string[];
     mediaObjectTypes?: string[];
     sourceType?: string;
+    contents?: LooseType;
+    postInfo?: LooseType;
   }): Promise<TimelineResponse> {
     await this.initTimeline();
     const {
@@ -81,12 +89,14 @@ export class Timeline {
       mediaObjectIds,
       mediaObjectTypes,
       sourceType,
+      contents: suppliedContents,
+      postInfo: suppliedPostInfo,
     } = {
       textSizeMode: "NORMAL",
       backgroundColor: "#FFFFFF",
       textAnimation: "NONE",
       readPermissionType: "ALL",
-      sourceType: "TIMELINE",
+      sourceType: "GROUPHOME",
       readPermissionGids: [],
       stickerIds: [],
       stickerPackageIds: [],
@@ -100,15 +110,9 @@ export class Timeline {
     if (homeId[0] === "u") {
       throw new Error("Not support oto");
     }
-    const params = new URLSearchParams({
-      homeId: homeId,
-      sourceType: sourceType,
-    });
-    const postInfo: LooseType = {
-      readPermission: {
-        type: readPermissionType,
-        gids: readPermissionGids,
-      },
+    const params = new URLSearchParams({ homeId, sourceType, ruid: crypto.randomUUID() });
+    const postInfo: LooseType = suppliedPostInfo ?? {
+      readPermission: { homeID: homeId, type: readPermissionType, gids: readPermissionGids },
     };
     const stickers: {
       id: string;
@@ -148,7 +152,9 @@ export class Timeline {
         obsFace: "[]",
       });
     });
-    const contents: LooseType = {
+    const contents: LooseType = suppliedContents ?? {
+      textMeta: [],
+      sticonMetas: [],
       contentsStyle: {
         textStyle: {
           textSizeMode: textSizeMode,
@@ -159,7 +165,12 @@ export class Timeline {
       },
       stickers: stickers,
       locations: locations,
-      media: medias,
+      media: medias.map((media) => ({
+        objectId: media.objectId,
+        type: media.type,
+        serviceName: "privnote",
+        obsNamespace: "post",
+      })),
     };
     if (typeof holdingTime !== "undefined") {
       postInfo.holdingTime = holdingTime;
@@ -170,16 +181,14 @@ export class Timeline {
     if (typeof sharedPostId !== "undefined") {
       contents.sharedPostId = sharedPostId;
     }
-    const data = { postInfo: postInfo, contents: contents };
+    const data = { postInfo, contents, sourceType, relatedContents: {} };
     const headers = {
       ...this.timelineHeaders,
       "x-lhm": "POST",
     };
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/create.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/create.json?${params}`,
         { headers, body: JSON.stringify(data), method: "POST" },
       )
       .then((r) => r.json());
@@ -198,9 +207,7 @@ export class Timeline {
     });
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/delete.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/delete.json?${params}`,
         { headers, method: "POST" },
       )
       .then((r) => r.json());
@@ -219,9 +226,7 @@ export class Timeline {
     });
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/get.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/get.json?${params}`,
         { headers },
       )
       .then((r) => r.json());
@@ -232,10 +237,14 @@ export class Timeline {
     postId?: string;
     updatedTime?: number;
     sourceType?: string;
+    postLimit?: number;
+    showVideoPostsOnly?: boolean;
   }): Promise<TimelineResponse> {
     await this.initTimeline();
-    const { homeId, postId, updatedTime, sourceType } = {
-      sourceType: "TALKROOM",
+    const { homeId, postId, updatedTime, sourceType, postLimit, showVideoPostsOnly } = {
+      sourceType: "GROUPHOME",
+      postLimit: 20,
+      showVideoPostsOnly: false,
       ...options,
     };
     const headers = {
@@ -247,6 +256,8 @@ export class Timeline {
       sourceType,
       likeLimit: "0",
       commentLimit: "0",
+      showVideoPostsOnly: String(showVideoPostsOnly),
+      postLimit: String(postLimit),
     };
     if (postId) {
       data.postId = postId;
@@ -257,9 +268,7 @@ export class Timeline {
     const params = new URLSearchParams(data);
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/list.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/list.json?${params}`,
         { headers },
       )
       .then((r) => r.json());
@@ -281,6 +290,7 @@ export class Timeline {
     locationNames?: string[];
     mediaObjectIds?: string[];
     mediaObjectTypes?: string[];
+    contents?: LooseType;
   }): Promise<TimelineResponse> {
     await this.initTimeline();
     const {
@@ -299,6 +309,7 @@ export class Timeline {
       locationNames,
       mediaObjectIds,
       mediaObjectTypes,
+      contents: suppliedContents,
     } = {
       textSizeMode: "NORMAL",
       backgroundColor: "#FFFFFF",
@@ -363,7 +374,7 @@ export class Timeline {
         obsFace: "[]",
       });
     });
-    const contents: LooseType = {
+    const contents: LooseType = suppliedContents ?? {
       sticonMetas: [],
       contentsStyle: {
         textStyle:
@@ -404,9 +415,7 @@ export class Timeline {
     };
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/update.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/update.json?${params}`,
         { headers, body: JSON.stringify(data), method: "POST" },
       )
       .then((r) => r.json());
@@ -421,7 +430,7 @@ export class Timeline {
     await this.initTimeline();
     const { contentId, homeId, likeType, sourceType } = {
       likeType: "1003",
-      sourceType: "TIMELINE",
+      sourceType: "GROUPHOME_END",
       ...options,
     };
     const params = new URLSearchParams({
@@ -433,7 +442,7 @@ export class Timeline {
     };
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/ext/note/nt/api/v57/like/create.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/create.json?${params}`,
         {
           headers,
           method: "POST",
@@ -447,6 +456,42 @@ export class Timeline {
       .then((r) => r.json());
   }
 
+  public async unlikePost(options: { contentId: string; homeId: string; sourceType?: string }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({
+      homeId: options.homeId,
+      sourceType: options.sourceType ?? "GROUPHOME_END",
+      contentId: options.contentId,
+    });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/cancel.json?${params}`,
+      { headers: { ...this.timelineHeaders, "x-lhm": "POST" }, method: "POST" },
+    ).then((r) => r.json());
+  }
+
+  public async getLike(options: { contentId: string; homeId: string }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({ contentId: options.contentId, parentType: "activity", homeId: options.homeId });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/get.json?${params}`,
+      { headers: { ...this.timelineHeaders, "x-lhm": "GET" } },
+    ).then((r) => r.json());
+  }
+
+  public async listLikes(options: { contentId: string; homeId: string; sourceType?: string }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({
+      homeId: options.homeId,
+      includes: "ALL,GROUPED,STATS",
+      sourceType: options.sourceType ?? "TALKROOM",
+      contentId: options.contentId,
+    });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/getList.json?${params}`,
+      { headers: { ...this.timelineHeaders, "x-lhm": "GET" } },
+    ).then((r) => r.json());
+  }
+
   public async createComment(options: {
     contentId: string; // postId
     commentText: string;
@@ -456,7 +501,7 @@ export class Timeline {
   }): Promise<TimelineResponse> {
     await this.initTimeline();
     const { contentId, commentText, homeId, sourceType, contentsList } = {
-      sourceType: "TIMELINE",
+      sourceType: "GROUPHOME_END",
       contentsList: [],
       ...options,
     };
@@ -475,7 +520,7 @@ export class Timeline {
     };
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/ext/note/nt/api/v57/comment/create.json?${params}`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/comment/create.json?${params}`,
         {
           headers,
           method: "POST",
@@ -487,10 +532,9 @@ export class Timeline {
 
   public async sharePost(options: {
     postId: string;
-    chatMid: string;
     homeId: string;
   }): Promise<TimelineResponse> {
-    const { chatMid, postId, homeId } = {
+    const { postId, homeId } = {
       ...options,
     };
     await this.initTimeline();
@@ -500,43 +544,78 @@ export class Timeline {
     };
     return await this.client
       .fetch(
-        `https://${this.client.request.endpoint}/${
-          homeId[0] == "s" ? "sn" : "mh"
-        }/api/v57/post/sendPostToTalk.json`,
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/post/share.json?${new URLSearchParams({ homeId, ruid: crypto.randomUUID() })}`,
         {
           method: "POST",
           headers,
-          body: JSON.stringify({
-            postId: postId,
-            receiveMids: [chatMid],
-          }),
+          body: JSON.stringify({ postId }),
         },
       )
       .then((r) => r.json());
   }
 
-  /**
-   * Uploads an image or video into the myhome OBS space so it can be attached
-   * to a Note post via {@link createPost}'s `mediaObjectIds` / `mediaObjectTypes`
-   * (e.g. `mediaObjectTypes: ["PHOTO"]` for an image, `["VIDEO"]` for a video).
-   *
-   * Note media does NOT go through `obs.uploadObjectForService` — that hits
-   * `/r/{obsPath}`, which the myhome edge rejects with 403. Notes use the legacy
-   * `.nhn` upload endpoint, authenticated with the timeline channel token (see
-   * {@link initTimeline}); the object id is chosen client-side and echoed back as
-   * `x-obs-oid`.
-   */
+  public async getGroupHomeUpdates(revision: number): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const headers = {
+      ...this.timelineHeaders,
+      "x-lhm": "GET",
+    };
+    return await this.client
+      .fetch(
+        `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/grouphome/isnew.json?${new URLSearchParams({ revision: String(revision) })}`,
+        {
+          method: "POST",
+          headers,
+          body: "",
+        },
+      )
+      .then((r) => r.json());
+  }
+
+  /** Upload Note post media using the current iOS/iPad OBS path. */
   public async uploadNoteMedia(
     type: "image" | "video",
     data: Blob,
   ): Promise<{ objId: string; objHash: string }> {
     await this.initTimeline();
-    const objId = crypto
-      .createHash("md5")
-      .update(`${this.client.profile!.mid}-${Date.now()}`)
-      .digest("hex");
-    const res = await this.#uploadObjNhn("myhome/h", objId, type, data);
-    return { objId, objHash: res.headers.get("x-obs-hash") ?? "" };
+    const requestedOid = crypto.randomUUID().replaceAll("-", "");
+    const extension = type === "video" ? "mp4" : "jpg";
+    const uploadName = `${crypto.randomUUID().toUpperCase()}.${extension}`;
+    const params = {
+      ver: "2.0",
+      type,
+      name: uploadName,
+    };
+    const res: Response = await this.client.fetch(
+      `https://obs-jp.line-apps.com/r/privnote/post/${requestedOid}`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "*/*",
+          "Accept-Language": "ja",
+          "X-Line-ChannelToken": this.timelineToken!,
+          "X-Line-Application": this.timelineHeaders["x-line-application"]!,
+          "User-Agent": this.timelineHeaders["user-agent"]!,
+          "x-lal": "ja_JP",
+          "Upload-Draft-Interop-Version": "6",
+          "Upload-Complete": "?1",
+          "content-type": "application/octet-stream",
+          "content-length": String(data.size),
+          "x-obs-params": Buffer.from(JSON.stringify(params)).toString("base64"),
+        },
+        body: data,
+      },
+    );
+    if (res.status !== 201) {
+      const detail = (await res.text())
+        .slice(0, 500)
+        .replace(/[A-Za-z0-9+/_=-]{40,}/g, "<redacted>");
+      throw new Error(`Note media upload failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`);
+    }
+    return {
+      objId: res.headers.get("x-obs-oid") ?? requestedOid,
+      objHash: res.headers.get("x-obs-hash") ?? "",
+    };
   }
 
   /**

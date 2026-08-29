@@ -140,6 +140,12 @@ export async function loginWithToken(
   return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
 }
 
+export async function loginWithStoredRefreshToken(init: VylineLoginInit): Promise<VylineClient> {
+  const { base, mode } = createBase(init);
+  await base.auth.tryRefreshToken();
+  return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
+}
+
 export async function sendText(
   client: VylineClient,
   to: string,
