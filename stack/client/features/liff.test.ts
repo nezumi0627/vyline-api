@@ -1,5 +1,5 @@
 import { assertEquals } from "@vyline/protocol/stack/assert";
-import { flex, image, sticker, text } from "./liff.ts";
+import { flex, image, sticker, text, withSender } from "./liff.ts";
 
 Deno.test("liff.text — plain", () => {
   assertEquals(text("hi"), { type: "text", text: "hi" });
@@ -18,6 +18,24 @@ Deno.test("liff.text — with sentBy", () => {
       label: "Bot",
       iconUrl: "https://example.test/icon.png",
       linkUrl: "https://example.test",
+    },
+  });
+});
+
+Deno.test("liff.withSender — adds LIFF sender metadata without changing the source", () => {
+  const source = text("Hello!");
+  const message = withSender(source, {
+    name: "Cony",
+    iconUrl: "https://example.test/icon.png",
+  });
+
+  assertEquals(source, { type: "text", text: "Hello!" });
+  assertEquals(message, {
+    type: "text",
+    text: "Hello!",
+    sender: {
+      name: "Cony",
+      iconUrl: "https://example.test/icon.png",
     },
   });
 });
