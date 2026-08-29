@@ -15,6 +15,23 @@ export interface LiffTextMessage {
   text: string;
   sentBy?: { label: string; iconUrl: string; linkUrl?: string };
 }
+
+/**
+ * Optional sender decoration accepted by LINE's LIFF share payload.
+ *
+ * This is distinct from the legacy `sentBy` footer metadata used by some
+ * text payloads. Keep it as a generic message wrapper so callers can opt in
+ * without coupling the protocol layer to UI state.
+ */
+export interface LiffSender {
+  name: string;
+  iconUrl?: string;
+}
+
+export type LiffMessageWithSender<T extends LiffMessage = LiffMessage> = T & {
+  sender: LiffSender;
+};
+
 export interface LiffStickerMessage {
   type: "sticker";
   packageId: string;
@@ -53,6 +70,14 @@ export function image(
 
 export function flex(altText: string, contents: Record<string, unknown>): LiffFlexMessage {
   return { type: "flex", altText, contents };
+}
+
+/** Attach LIFF `sender` metadata without mutating the original message. */
+export function withSender<T extends LiffMessage>(
+  message: T,
+  sender: LiffSender,
+): LiffMessageWithSender<T> {
+  return { ...message, sender };
 }
 
 export interface LiffClient {
