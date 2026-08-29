@@ -1,0 +1,2 @@
+# biome (formatter) の既定は LF。Windows チェックアウトでも一貫させる
+* text=auto eol=lf

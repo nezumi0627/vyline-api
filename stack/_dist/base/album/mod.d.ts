@@ -1,4 +1,5 @@
 import type { BaseClient } from "../mod.ts";
+import type { LooseType } from "@vyline/loose-types";
 export declare const ALBUM_CHANNEL_ID = "1375220249";
 export interface AlbumInfo {
     albumId: string;
@@ -49,6 +50,11 @@ export type AlbumPhotoCreateInput = {
     height: number;
     shotTime?: number;
     resourceType?: "IMAGE" | "VIDEO" | string;
+};
+export type AlbumResponse<T = LooseType> = {
+    code: number;
+    message?: string;
+    result: T | null;
 };
 export declare function buildAlbumUrl(endpoint: string, path: string, query?: Record<string, string | number | undefined>): string;
 /** LINE Album JSON REST client (iOS 26.12.1 observed API). */
@@ -143,4 +149,11 @@ export declare class Album {
         oid: string;
         mediaType?: "image" | "video";
     }): Promise<Response>;
+    private headers;
+    call<T = LooseType>(options: {
+        path: string;
+        method?: "GET" | "POST" | "PUT" | "DELETE";
+        query?: Record<string, string | number | undefined>;
+        body?: LooseType;
+    }): Promise<AlbumResponse<T>>;
 }

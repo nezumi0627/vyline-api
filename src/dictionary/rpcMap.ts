@@ -3,7 +3,7 @@
  *
  * 方針:
  * 1. 正規のメソッド名（canonicalName）を「探し語」にする
- * 2. `bun run vyline:find-native -- <name> --list-only` で Desktop に同名 Thrift / C++ があるか確認
+ * 2. vyline モノレポの `bun run vyline:find-native -- <name> --list-only` で Desktop に同名 Thrift / C++ があるか確認
  * 3. Desktop で確定した path / RPC を実装の正とする
  *
  * 根拠ログ: source/desktop/recovered/native-search/
