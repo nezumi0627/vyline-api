@@ -66,20 +66,14 @@ const ALBUM_OBS = "obs-jp.line-apps.com";
 /** LINE Album JSON REST client (iOS 26.12.1 observed API). */
 export class Album {
   private readonly client: BaseClient;
-  private token?: string;
+  private static readonly CHANNEL_ID = "1375220249";
 
   constructor(client: BaseClient) {
     this.client = client;
   }
 
   private async channelToken(): Promise<string> {
-    if (this.token) return this.token;
-    const response = await this.client.channel.approveChannelAndIssueChannelToken({
-      channelId: ALBUM_CHANNEL_ID,
-    });
-    if (!response.channelAccessToken) throw new Error("Album channel token was not issued");
-    this.token = response.channelAccessToken;
-    return this.token;
+    return this.client.channelTokens.get(ALBUM_CHANNEL_ID, { approve: true });
   }
 
   private async json<T extends { code?: number; message?: string }>(
@@ -251,16 +245,12 @@ export class Album {
   }
 
   private async headers(): Promise<Record<string, string>> {
-    if (!this.token) {
-      this.token = (
-        await this.client.channel.approveChannelAndIssueChannelToken({ channelId: "1375220249" })
-      ).channelAccessToken;
-    }
+    const token = await this.client.channelTokens.get(Album.CHANNEL_ID, { approve: true });
     return {
       "x-line-bdbtemplateversion": "v1",
       "x-lsr": "JP",
       "user-agent": this.client.request.userAgent,
-      "x-line-channeltoken": this.token,
+      "x-line-channeltoken": token,
       "x-line-mid": this.client.profile!.mid,
       "x-line-access": this.client.authToken,
       "content-type": "application/json; charset=UTF-8",
@@ -280,14 +270,18 @@ export class Album {
       if (value !== undefined) query.set(key, String(value));
     }
     const suffix = query.size ? `?${query}` : "";
-    const response = await this.client.fetch(
-      `https://${this.client.request.endpoint}/ext/album${options.path.startsWith("/") ? options.path : `/${options.path}`}${suffix}`,
-      {
+    const url = `https://${this.client.request.endpoint}/ext/album${options.path.startsWith("/") ? options.path : `/${options.path}`}${suffix}`;
+    const invoke = async () =>
+      this.client.fetch(url, {
         method: options.method ?? (options.body === undefined ? "GET" : "POST"),
         headers: await this.headers(),
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      },
-    );
+      });
+    let response = await invoke();
+    if (response.status === 401) {
+      await this.client.channelTokens.reissue(Album.CHANNEL_ID, true);
+      response = await invoke();
+    }
     return (await response.json()) as AlbumResponse<T>;
   }
 }
