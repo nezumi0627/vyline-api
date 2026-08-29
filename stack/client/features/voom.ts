@@ -91,14 +91,7 @@ export async function voomRest<T = unknown>(
 }
 
 export async function getChannelToken(client: Client, channelId: string): Promise<string> {
-  const r = await client.base.channel.issueChannelToken({ channelId });
-  // 重要: ゲートウェイ(gw.line.naver.jp)は channelAccessToken を X-Line-ChannelToken として
-  // 要求する。r.token(長い方)を渡すと 401「ユーザー認証を更新しています」になる。
-  const t =
-    (r as unknown as { channelAccessToken?: string }).channelAccessToken ??
-    (r as unknown as { token?: string }).token;
-  if (!t) throw new Error("issueChannelToken returned no token");
-  return t;
+  return client.base.channelTokens.get(channelId, { approve: true });
 }
 
 /**
@@ -152,24 +145,22 @@ export interface VoomClient {
 
 class ClientVoom implements VoomClient {
   #client: Client;
-  #tokenCache = new Map<string, string>();
   constructor(client: Client) {
     this.#client = client;
   }
   async getToken(channel: keyof typeof VoomChannelId): Promise<string> {
-    let t = this.#tokenCache.get(channel);
-    if (!t) {
-      t = await getChannelToken(this.#client, VoomChannelId[channel]);
-      this.#tokenCache.set(channel, t);
-    }
-    return t;
+    return getChannelToken(this.#client, VoomChannelId[channel]);
   }
   async call<T = unknown>(
     channel: keyof typeof VoomChannelId,
     opts: Omit<VoomRestOptions, "channelToken">,
   ): Promise<VoomRestResponse<T>> {
+    const channelId = VoomChannelId[channel];
     const channelToken = await this.getToken(channel);
-    return await voomRest<T>(this.#client, { ...opts, channelToken });
+    const first = await voomRest<T>(this.#client, { ...opts, channelToken });
+    if (first.code !== 401) return first;
+    const refreshed = await this.#client.base.channelTokens.reissue(channelId, true);
+    return voomRest<T>(this.#client, { ...opts, channelToken: refreshed });
   }
   async feed(opts: { postLimit?: number; followingMaxPage?: number } = {}) {
     const postLimit = opts.postLimit ?? 10;

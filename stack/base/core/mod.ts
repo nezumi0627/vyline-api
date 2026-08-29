@@ -33,6 +33,7 @@ import { Timeline } from "../timeline/mod.js";
 import { Album } from "../album/mod.js";
 import { Polling } from "../polling/mod.js";
 import { ConnManager } from "../push/mod.js";
+import { ChannelTokenManager } from "../channel-token/mod.js";
 
 import { Thrift as def } from "@vyline/line-types/thrift";
 
@@ -123,6 +124,7 @@ export class BaseClient extends TypedEventEmitter<ClientEvents> {
   readonly album: Album;
   readonly poll: Polling;
   readonly push: ConnManager;
+  readonly channelTokens: ChannelTokenManager;
 
   readonly auth: AuthService;
   readonly call: CallService;
@@ -202,6 +204,7 @@ export class BaseClient extends TypedEventEmitter<ClientEvents> {
     this.auth = new AuthService(this);
     this.call = new CallService(this);
     this.channel = new ChannelService(this);
+    this.channelTokens = new ChannelTokenManager(this);
     this.liff = new LiffService(this);
     this.livetalk = new SquareLiveTalkService(this);
     this.relation = new RelationService(this);

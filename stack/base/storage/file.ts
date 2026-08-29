@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { dirname } from "node:path";
 import { BaseStorage, type Storage } from "./base.js";
 
 /**
@@ -19,6 +20,8 @@ export class FileStorage extends BaseStorage {
     extendData?: string,
   ) {
     super();
+
+    fs.mkdirSync(dirname(this.path), { recursive: true });
 
     try {
       fs.readFileSync(this.path, "utf-8");
