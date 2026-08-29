@@ -124,7 +124,7 @@ export declare class Login {
      * @param {string} [email] The email to login with.
      * @param {string} [password] The password to login with.
      * @param {boolean} [enableE2EE=false] Enable E2EE Login or not.
-     * @param {string} [constantPincode="114514"] The constant pincode.
+     * @param {string} [constantPincode] Optional custom 6-digit pincode. A CSPRNG-generated PIN is used when omitted.
      * @returns {Promise<string>} The auth token.
      * @throws {InternalError} If the system is not setup yet.
      * @throws {InternalError} If the login type is not supported.

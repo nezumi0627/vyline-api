@@ -4,6 +4,7 @@ import { type Device, isV3Support } from "../core/utils/devices.js";
 import { InternalError } from "../core/mod.js";
 import type * as LINETypes from "@vyline/line-types";
 import { Buffer } from "node:buffer";
+import { randomInt } from "node:crypto";
 import { LINEStruct } from "../thrift/mod.js";
 import type { BaseClient } from "../core/mod.js";
 import type { LooseType } from "@vyline/loose-types";
@@ -26,6 +27,8 @@ interface LoginVer {
   loginV2: LooseType;
   loginZ: LINETypes.LoginResult;
 }
+
+const random6DigitPin = (): string => String(randomInt(100000, 1000000));
 
 export interface PasswordLoginOption {
   /**
@@ -341,7 +344,7 @@ export class Login {
    * @param {string} [email] The email to login with.
    * @param {string} [password] The password to login with.
    * @param {boolean} [enableE2EE=false] Enable E2EE Login or not.
-   * @param {string} [constantPincode="114514"] The constant pincode.
+   * @param {string} [constantPincode] Optional custom 6-digit pincode. A CSPRNG-generated PIN is used when omitted.
    * @returns {Promise<string>} The auth token.
    * @throws {InternalError} If the system is not setup yet.
    * @throws {InternalError} If the login type is not supported.
@@ -352,7 +355,7 @@ export class Login {
   public async requestEmailLogin(
     email: string,
     password: string,
-    constantPincode: string = "114514",
+    constantPincode: string = random6DigitPin(),
     enableE2EE: boolean = true,
   ): Promise<string> {
     if (constantPincode.length !== 6) {
@@ -479,7 +482,7 @@ export class Login {
   public async requestEmailLoginV2(
     email: string,
     password: string,
-    constantPincode: string = "114514",
+    constantPincode: string = random6DigitPin(),
   ): Promise<string> {
     if (constantPincode.length !== 6) {
       throw new InternalError(
