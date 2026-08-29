@@ -73,13 +73,7 @@ export class Album {
   }
 
   private async channelToken(): Promise<string> {
-    if (this.token) return this.token;
-    const response = await this.client.channel.approveChannelAndIssueChannelToken({
-      channelId: ALBUM_CHANNEL_ID,
-    });
-    if (!response.channelAccessToken) throw new Error("Album channel token was not issued");
-    this.token = response.channelAccessToken;
-    return this.token;
+    return this.client.channelTokens.get(ALBUM_CHANNEL_ID, { approve: true });
   }
 
   private async json<T extends { code?: number; message?: string }>(
