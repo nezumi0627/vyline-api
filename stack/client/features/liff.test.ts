@@ -48,7 +48,7 @@ Deno.test("liff.withSender — adds LIFF sender metadata without changing the so
   });
 });
 
-Deno.test("liff.withAttribution — uses sender for name/icon and sentBy only for URL", () => {
+Deno.test("liff.withAttribution — keeps the public sender input shape", () => {
   const source = text("Hello!");
   const message = withAttribution(source, {
     name: "Cony",
@@ -63,16 +63,12 @@ Deno.test("liff.withAttribution — uses sender for name/icon and sentBy only fo
     sender: {
       name: "Cony",
       iconUrl: "https://example.test/icon.png",
-    },
-    sentBy: {
-      label: "Cony",
-      iconUrl: "https://example.test/icon.png",
       linkUrl: "https://example.test/profile",
     },
   });
 });
 
-Deno.test("liff.withAttribution — does not emit legacy sentBy without URL", () => {
+Deno.test("liff.withAttribution — supports name-only sender metadata", () => {
   assertEquals(withAttribution(text("Hello!"), { name: "Cony" }), {
     type: "text",
     text: "Hello!",
@@ -80,7 +76,7 @@ Deno.test("liff.withAttribution — does not emit legacy sentBy without URL", ()
   });
 });
 
-Deno.test("liff.sendLiff JSON shape — normalizes sender linkUrl into sentBy", () => {
+Deno.test("liff.sendLiff JSON shape — normalizes sender into LINE sentBy", () => {
   assertEquals(
     prepareSendMessage({
       type: "text",
@@ -94,10 +90,6 @@ Deno.test("liff.sendLiff JSON shape — normalizes sender linkUrl into sentBy", 
     {
       type: "text",
       text: "Hello!",
-      sender: {
-        name: "Cony",
-        iconUrl: "https://example.test/icon.png",
-      },
       sentBy: {
         label: "Cony",
         iconUrl: "https://example.test/icon.png",

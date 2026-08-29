@@ -16,16 +16,11 @@ export interface LiffTextMessage {
   sentBy?: { label: string; iconUrl: string; linkUrl?: string };
 }
 
-/**
- * Optional sender decoration accepted by LINE's LIFF share payload.
- *
- * This is distinct from the legacy `sentBy` footer metadata used by some
- * text payloads. Keep it as a generic message wrapper so callers can opt in
- * without coupling the protocol layer to UI state.
- */
+/** User-facing sender metadata. It is normalized to LINE's `sentBy` wire shape. */
 export interface LiffSender {
   name: string;
   iconUrl?: string;
+  linkUrl?: string;
 }
 
 export interface LiffAttribution {
@@ -48,7 +43,6 @@ export type LiffMessageWithSender<T extends LiffMessage = LiffMessage> = T & {
 
 export type LiffMessageWithAttribution<T extends LiffMessage = LiffMessage> = T & {
   sender: LiffSender;
-  sentBy?: { label: string; iconUrl: string; linkUrl?: string };
 };
 export interface LiffStickerMessage {
   type: "sticker";
@@ -90,7 +84,7 @@ export function flex(altText: string, contents: Record<string, unknown>): LiffFl
   return { type: "flex", altText, contents };
 }
 
-/** Attach LIFF `sender` metadata without mutating the original message. */
+/** Attach the user-facing sender metadata without mutating the original message. */
 export function withSender<T extends LiffMessage>(
   message: T,
   sender: LiffSender,
@@ -98,29 +92,17 @@ export function withSender<T extends LiffMessage>(
   return { ...message, sender };
 }
 
-/**
- * Attach display attribution using LINE's official `sender` fields.
- * When a link is requested, mirror the same label/icon into legacy `sentBy`
- * because `sender` has no URL field.
- */
+/** Backward-compatible helper for attaching display attribution. */
 export function withAttribution<T extends LiffMessage>(
   message: T,
   attribution: LiffAttribution,
 ): LiffMessageWithAttribution<T> {
-  const sender: LiffSender = {
-    name: attribution.name,
-    ...(attribution.iconUrl ? { iconUrl: attribution.iconUrl } : {}),
-  };
-
-  if (!attribution.linkUrl) return { ...message, sender };
-
   return {
     ...message,
-    sender,
-    sentBy: {
-      label: attribution.name,
-      iconUrl: attribution.iconUrl ?? "",
-      linkUrl: attribution.linkUrl,
+    sender: {
+      name: attribution.name,
+      ...(attribution.iconUrl ? { iconUrl: attribution.iconUrl } : {}),
+      ...(attribution.linkUrl ? { linkUrl: attribution.linkUrl } : {}),
     },
   };
 }
@@ -128,7 +110,14 @@ export function withAttribution<T extends LiffMessage>(
 export function prepareSendMessage(message: LiffSendMessage): LiffMessage {
   if (!message.sender) return message;
   const { sender, ...base } = message;
-  return withAttribution(base as LiffMessage, sender);
+  return {
+    ...base,
+    sentBy: {
+      label: sender.name,
+      iconUrl: sender.iconUrl ?? "",
+      ...(sender.linkUrl ? { linkUrl: sender.linkUrl } : {}),
+    },
+  };
 }
 export interface LiffClient {
   readonly defaultLiffId: string;
