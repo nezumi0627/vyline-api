@@ -132,6 +132,10 @@ export class RequestClient {
     const headers = {
       ...this.getHeader(overrideMethod),
       ...appendHeaders,
+      // Plain /S4 RPCs (including IOSIPAD QR sessions with opaque tokens) must
+      // not reuse another account's connection either. Keep this on RPC
+      // requests only: getHeader() is also used by HTTP/2 push connections.
+      connection: "close",
     };
 
     this.client.log("writeThrift", {
