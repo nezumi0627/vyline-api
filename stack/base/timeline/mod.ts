@@ -21,18 +21,7 @@ export class Timeline {
   }
 
   public async initTimeline() {
-    if (this.timelineToken) {
-      return;
-    }
-    const channelToken = await this.client.channel.issueChannelToken({
-      channelId: "1341209850",
-    });
-    this.timelineToken =
-      (channelToken as { channelAccessToken?: string }).channelAccessToken ??
-      (channelToken as { token?: string }).token;
-    if (!this.timelineToken) {
-      throw new Error("Timeline channel token was not issued");
-    }
+    this.timelineToken = await this.client.channelTokens.get("1341209850", { approve: true });
     this.timelineHeaders = {
       "x-line-bdbtemplateversion": "v1",
       "x-lsr": "JP",

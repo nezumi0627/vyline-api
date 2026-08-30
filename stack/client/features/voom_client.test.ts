@@ -3,7 +3,10 @@ import { createVoomClient, VoomChannelId } from "./voom.ts";
 
 function makeFake() {
   const issued: string[] = [];
+  const reissued: string[] = [];
   const fetched: { url: string; headers: Record<string, string> }[] = [];
+  const tokens = new Map<string, string>();
+  const responses: Response[] = [];
   const fakeClient = {
     base: {
       profile: { mid: "u-test-mid" },
@@ -11,14 +14,26 @@ function makeFake() {
         systemType: "ANDROID\t26.6.2",
         userAgent: "Line/26.6.2",
       },
-      channel: {
-        issueChannelToken(opts: { channelId: string }) {
-          issued.push(opts.channelId);
-          return Promise.resolve({ token: `tok-${opts.channelId}` });
+      channelTokens: {
+        get(channelId: string) {
+          const cached = tokens.get(channelId);
+          if (cached) return Promise.resolve(cached);
+          issued.push(channelId);
+          const token = `tok-${channelId}`;
+          tokens.set(channelId, token);
+          return Promise.resolve(token);
+        },
+        reissue(channelId: string) {
+          reissued.push(channelId);
+          const token = `tok-refreshed-${channelId}`;
+          tokens.set(channelId, token);
+          return Promise.resolve(token);
         },
       },
       fetch(url: string, init: { headers: Record<string, string> }) {
         fetched.push({ url, headers: { ...init.headers } });
+        const queued = responses.shift();
+        if (queued) return Promise.resolve(queued);
         return Promise.resolve(
           new Response(JSON.stringify({ code: 200, result: { fake: true } }), {
             headers: { "content-type": "application/json" },
@@ -31,7 +46,9 @@ function makeFake() {
   return {
     client: fakeClient as never,
     issued,
+    reissued,
     fetched,
+    responses,
   };
 }
 
@@ -99,4 +116,23 @@ Deno.test("VoomClient.call — routing prefix selects the right gateway path", a
   const vc = createVoomClient(client);
   await vc.call("ALBUM", { routing: "ALBUM", path: "/api/v1.0/initialize" });
   assertEquals(new URL(fetched[0].url).pathname, "/ext/album/api/v1.0/initialize");
+});
+
+Deno.test("VoomClient.call — 401 reissues once and retries with the fresh token", async () => {
+  const { client, fetched, reissued, responses } = makeFake();
+  responses.push(
+    new Response(JSON.stringify({ code: 401, result: null })),
+    new Response(JSON.stringify({ code: 200, result: { ok: true } })),
+  );
+  const vc = createVoomClient(client);
+  const result = await vc.call("TIMELINE", { path: "/api/v57/post/list.json" });
+
+  assertEquals(result.code, 200);
+  assertEquals(reissued, [VoomChannelId.TIMELINE]);
+  assertEquals(fetched.length, 2);
+  assertEquals(fetched[0].headers["X-Line-ChannelToken"], `tok-${VoomChannelId.TIMELINE}`);
+  assertEquals(
+    fetched[1].headers["X-Line-ChannelToken"],
+    `tok-refreshed-${VoomChannelId.TIMELINE}`,
+  );
 });
