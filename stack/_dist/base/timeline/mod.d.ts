@@ -94,12 +94,32 @@ export declare class Timeline {
         sourceType?: string;
         contentsList?: LooseType[];
     }): Promise<TimelineResponse>;
+    listComments(options: {
+        contentId: string;
+        homeId: string;
+        sourceType?: string;
+    }): Promise<TimelineResponse>;
+    deleteComment(options: {
+        contentId: string;
+        commentId: string;
+        homeId: string;
+        sourceType?: string;
+    }): Promise<TimelineResponse>;
+    likeComment(options: {
+        commentId: string;
+        homeId: string;
+        likeType?: "1003" | "1001" | "1002" | "1004" | "1006" | "1005";
+    }): Promise<TimelineResponse>;
+    unlikeComment(options: {
+        commentId: string;
+        homeId: string;
+    }): Promise<TimelineResponse>;
     sharePost(options: {
         postId: string;
         homeId: string;
     }): Promise<TimelineResponse>;
     getGroupHomeUpdates(revision: number): Promise<TimelineResponse>;
-    /** Upload Note post media using the current iOS/iPad OBS path. */
+    /** Upload Note post media using the legacy timeline-authenticated OBS endpoint. */
     uploadNoteMedia(type: "image" | "video", data: Blob): Promise<{
         objId: string;
         objHash: string;
