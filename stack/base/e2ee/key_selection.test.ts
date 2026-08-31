@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "@vyline/protocol/stack/assert";
+import { test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { E2EE } from "./mod.ts";
 
@@ -99,7 +100,7 @@ function makeFakeMessage(opts: {
   } as never;
 }
 
-Deno.test("decryptE2EEDataMessage — received: looks up self-key by receiverKeyId (#88)", async () => {
+test("decryptE2EEDataMessage — received: looks up self-key by receiverKeyId (#88)", async () => {
   const oldKey = { privKey: "AAAA", pubKey: "BBBB" };
   const newKey = { privKey: "CCCC", pubKey: "DDDD" };
   const { e2ee, seen, lookups } = makeE2EE({
@@ -125,7 +126,7 @@ Deno.test("decryptE2EEDataMessage — received: looks up self-key by receiverKey
   );
 });
 
-Deno.test("decryptE2EEDataMessage — sent: looks up self-key by senderKeyId (#88)", async () => {
+test("decryptE2EEDataMessage — sent: looks up self-key by senderKeyId (#88)", async () => {
   const key7 = { privKey: "AAAA", pubKey: "BBBB" };
   const key11 = { privKey: "CCCC", pubKey: "DDDD" };
   const { e2ee, seen, lookups } = makeE2EE({
@@ -148,7 +149,7 @@ Deno.test("decryptE2EEDataMessage — sent: looks up self-key by senderKeyId (#8
   );
 });
 
-Deno.test("decryptE2EEDataMessage — falls back to latest key when by-id miss (#88)", async () => {
+test("decryptE2EEDataMessage — falls back to latest key when by-id miss (#88)", async () => {
   const newKey = { privKey: "ZZZZ", pubKey: "YYYY" };
   const { e2ee, seen } = makeE2EE({
     keysByKeyId: {}, // empty by-id store

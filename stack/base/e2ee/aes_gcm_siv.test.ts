@@ -1,11 +1,12 @@
 import { assertEquals } from "@vyline/protocol/stack/assert";
 import { Buffer } from "node:buffer";
 import { gcmsiv } from "@noble/ciphers/aes.js";
+import { test } from "bun:test";
 
 // RFC 8452 §C.2 test vector: AES-256-GCM-SIV with non-empty AAD.
 // key=01000000…, nonce=030000000000000000000000, aad=01, plaintext=0200000000000000
 // expected ciphertext+tag = 1de22967c4 + 57124df88f338e6b
-Deno.test("AES-GCM-SIV: RFC 8452 §C.2 vector round-trips", () => {
+test("AES-GCM-SIV: RFC 8452 §C.2 vector round-trips", () => {
   const key = Buffer.from(
     "0100000000000000000000000000000000000000000000000000000000000000",
     "hex",

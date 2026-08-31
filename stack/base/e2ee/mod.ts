@@ -1047,6 +1047,9 @@ export class E2EE {
   async deriveKeyMaterial(
     keyMaterial: Buffer,
   ): Promise<{ encKey: Buffer; macKey: Buffer; nonce: Buffer }> {
+    if (keyMaterial.byteLength !== 32) {
+      throw new Error("E2EE media key material must be exactly 32 bytes");
+    }
     const derived = await new Promise<Buffer>((resolve, reject) => {
       // ???
       crypto.hkdf(
@@ -1058,6 +1061,7 @@ export class E2EE {
         (err, derivedKey) => {
           if (err) {
             reject(err);
+            return;
           }
           resolve(Buffer.from(derivedKey));
         },
@@ -1094,8 +1098,15 @@ export class E2EE {
     if (typeof keyMaterial === "string") {
       keyMaterial = Buffer.from(keyMaterial, "base64");
     }
+    if (rawData.byteLength < 32) throw new Error("E2EE media authentication tag is missing");
     const keys = await this.deriveKeyMaterial(keyMaterial);
-    return (await this.___decryptAESCTR(keys.encKey, keys.nonce, rawData)).slice(0, -32);
+    const ciphertext = rawData.subarray(0, -32);
+    const tag = rawData.subarray(-32);
+    const expected = this.signData(ciphertext, keys.macKey);
+    if (!crypto.timingSafeEqual(expected, tag)) {
+      throw new Error("E2EE media authentication failed");
+    }
+    return await this.___decryptAESCTR(keys.encKey, keys.nonce, ciphertext);
   }
 
   /**
