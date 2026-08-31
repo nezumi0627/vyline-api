@@ -11,6 +11,7 @@
 
 export type RpcPath =
   | "/S4"
+  | "/RE4"
   | "/V4"
   | "/api/v3p/rs"
   | "/api/v3/TalkService.do"
@@ -47,7 +48,7 @@ export interface RpcEntry {
 
 /**
  * 使用中 + 実装対象の RPC 一覧。
- * Desktop 検証日: 2026-07-29（findNativeSymbol --list-only）
+ * Desktop 検証日: 2026-08-31（LINE Desktop 26.4.2.3957 / findNativeSymbol --list-only）
  */
 export const RPC_DICTIONARY: readonly RpcEntry[] = [
   // ── Login ──────────────────────────────────────────
@@ -144,6 +145,38 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     backendApi: "getReadReceiptsForChat",
     category: "talk",
   },
+  {
+    canonicalName: "editMessage",
+    desktopEvidence: ["TalkService_editMessage_pargs", "TalkService_editMessage_presult"],
+    path: "/S4",
+    stackApi: "base.talk.editMessage",
+    backendApi: "editMessage",
+    category: "talk",
+  },
+  {
+    canonicalName: "getMessageEditNotice",
+    desktopEvidence: ["TalkService_getMessageEditNotice_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.getMessageEditNotice",
+    backendApi: "getMessageEditNotice",
+    category: "talk",
+  },
+  {
+    canonicalName: "react",
+    desktopEvidence: ["TalkService_react_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.react",
+    backendApi: "reactToMessage",
+    category: "talk",
+  },
+  {
+    canonicalName: "determineMediaMessageFlow",
+    desktopEvidence: ["TalkService_determineMediaMessageFlow_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.determineMediaMessageFlow",
+    backendApi: "sendMedia",
+    category: "talk",
+  },
 
   // ── Profile (self) ─────────────────────────────────
   {
@@ -183,7 +216,7 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     notes: "Pb1_O2: NAME | PICTURE_STATUS | …",
   },
   {
-    canonicalName: "getChat",
+    canonicalName: "getChats",
     desktopEvidence: ["TalkService_getChats_pargs"],
     path: "/S4",
     stackApi: "base.talk.getChats → Client.getChat",
@@ -191,15 +224,69 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     backendApi: "fetchContactProfile (c*/r*)",
     category: "chat-admin",
   },
+  {
+    canonicalName: "createChat",
+    desktopEvidence: ["TalkService_createChat_pargs", "TalkService_createChat_presult"],
+    path: "/S4",
+    stackApi: "base.talk.createChat",
+    backendApi: "createGroupChat",
+    category: "chat-admin",
+  },
+  {
+    canonicalName: "inviteIntoChat",
+    desktopEvidence: ["TalkService_inviteIntoChat_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.inviteIntoChat",
+    backendApi: "inviteToGroupChat",
+    category: "chat-admin",
+  },
+  {
+    canonicalName: "getChatRoomAnnouncements",
+    desktopEvidence: ["TalkService_getChatRoomAnnouncements_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.getChatRoomAnnouncements",
+    backendApi: "getChatRoomAnnouncements",
+    category: "chat-admin",
+  },
+  {
+    canonicalName: "createChatRoomAnnouncement",
+    desktopEvidence: ["TalkService_createChatRoomAnnouncement_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.createChatRoomAnnouncement",
+    backendApi: "createChatRoomAnnouncement",
+    category: "chat-admin",
+  },
+  {
+    canonicalName: "removeChatRoomAnnouncement",
+    desktopEvidence: ["TalkService_removeChatRoomAnnouncement_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.removeChatRoomAnnouncement",
+    backendApi: "removeChatRoomAnnouncement",
+    category: "chat-admin",
+  },
 
   // ── Contacts (others) ──────────────────────────────
   {
     canonicalName: "getContactsV3",
-    desktopEvidence: ["getContactsV3", "TalkService / Relation"],
-    path: "/S4",
+    desktopEvidence: [
+      "RelationService_getContactsV3_pargs",
+      "RelationService_getContactsV3_presult",
+    ],
+    path: "/RE4",
     stackApi: "base.relation.getContactsV3",
     domainApi: "session.contacts.get",
     backendApi: "fetchContactProfile (u*)",
+    category: "contacts",
+  },
+  {
+    canonicalName: "getTargetProfiles",
+    desktopEvidence: [
+      "RelationService_getTargetProfiles_pargs",
+      "RelationService_getTargetProfiles_presult",
+    ],
+    path: "/RE4",
+    stackApi: "base.relation.getTargetProfiles",
+    backendApi: "fetchContactProfile",
     category: "contacts",
   },
   {
@@ -211,6 +298,62 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     backendApi: "renameContact",
     category: "contacts",
     notes: "友だち表示名 override (CONTACT_SETTING_DISPLAY_NAME_OVERRIDE)",
+  },
+  {
+    canonicalName: "blockContact",
+    desktopEvidence: ["TalkService_blockContact_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.blockContact",
+    backendApi: "blockContactMid",
+    category: "contacts",
+  },
+  {
+    canonicalName: "unblockContact",
+    desktopEvidence: ["TalkService_unblockContact_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.unblockContact",
+    backendApi: "unblockContactMid",
+    category: "contacts",
+  },
+  {
+    canonicalName: "getBlockedContactIds",
+    desktopEvidence: ["TalkService_getBlockedContactIds_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.getBlockedContactIds",
+    backendApi: "getBlockedContactIds",
+    category: "contacts",
+  },
+  {
+    canonicalName: "setNotificationsEnabled",
+    desktopEvidence: ["TalkService_setNotificationsEnabled_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.setNotificationsEnabled",
+    backendApi: "setNotificationsEnabled",
+    category: "contacts",
+  },
+  {
+    canonicalName: "getSettings",
+    desktopEvidence: ["TalkService_getSettings_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.getSettings",
+    backendApi: "setNotificationsEnabled",
+    category: "contacts",
+  },
+  {
+    canonicalName: "updateSettingsAttributes2",
+    desktopEvidence: ["TalkService_updateSettingsAttributes2_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.updateSettingsAttributes2",
+    backendApi: "setNotificationsEnabled",
+    category: "contacts",
+  },
+  {
+    canonicalName: "getExtendedProfile",
+    desktopEvidence: ["TalkService_getExtendedProfile_pargs"],
+    path: "/S4",
+    stackApi: "base.talk.getExtendedProfile",
+    backendApi: "fetchContactsBatch / fetchContactProfile",
+    category: "profile",
   },
 
   // ── E2EE ───────────────────────────────────────────
