@@ -47,4 +47,43 @@ describe("account RPC transport", () => {
     const client = new BaseClient({ device: "IOSIPAD" });
     expect(client.request.getHeader()).not.toHaveProperty("connection");
   });
+
+  test("emits RPC trace metadata without request, credential, or response payloads", async () => {
+    const requestSecret = "request-verifier-secret";
+    const headerSecret = "x-line-access-secret";
+    const responseSecret = "response-verifier-secret";
+    const wire = new Thrift();
+    const responseBody = wire.writeThrift(
+      [[12, 0, [[11, 1, responseSecret]]]],
+      "loginZ",
+      Protocols[4],
+    );
+    const logs: unknown[] = [];
+    const client = new BaseClient({
+      device: "IOSIPAD",
+      fetch: async () => new Response(new Uint8Array(responseBody)),
+    });
+    client.on("log", (event) => logs.push(event));
+
+    await client.request.request(
+      [[11, 1, requestSecret]],
+      "loginZ",
+      4,
+      false,
+      "/api/v3p/rs",
+      { "x-line-access": headerSecret },
+    );
+
+    const encoded = JSON.stringify(logs);
+    expect(encoded).not.toContain(requestSecret);
+    expect(encoded).not.toContain(headerSecret);
+    expect(encoded).not.toContain(responseSecret);
+    expect(encoded).not.toContain('"value"');
+    expect(encoded).not.toContain('"headers"');
+    expect(encoded).not.toContain('"body"');
+    expect(encoded).not.toContain('"parsedBody"');
+    expect(encoded).not.toContain('"res"');
+    expect(encoded).toContain('"requestBytes"');
+    expect(encoded).toContain('"responseBytes"');
+  });
 });

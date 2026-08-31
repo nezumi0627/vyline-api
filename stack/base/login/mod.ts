@@ -4,6 +4,7 @@ import { type Device, isV3Support } from "../core/utils/devices.js";
 import { InternalError } from "../core/mod.js";
 import type * as LINETypes from "@vyline/line-types";
 import { Buffer } from "node:buffer";
+import { randomInt } from "node:crypto";
 import { LINEStruct } from "../thrift/mod.js";
 import type { BaseClient } from "../core/mod.js";
 import type { LooseType } from "@vyline/loose-types";
@@ -26,6 +27,8 @@ interface LoginVer {
   loginV2: LooseType;
   loginZ: LINETypes.LoginResult;
 }
+
+export const random6DigitPin = (): string => String(randomInt(100000, 1000000));
 
 export interface PasswordLoginOption {
   /**
@@ -341,7 +344,7 @@ export class Login {
    * @param {string} [email] The email to login with.
    * @param {string} [password] The password to login with.
    * @param {boolean} [enableE2EE=false] Enable E2EE Login or not.
-   * @param {string} [constantPincode="114514"] The constant pincode.
+   * @param {string} [constantPincode] Optional custom 6-digit pincode. A CSPRNG-generated PIN is used when omitted.
    * @returns {Promise<string>} The auth token.
    * @throws {InternalError} If the system is not setup yet.
    * @throws {InternalError} If the login type is not supported.
@@ -352,7 +355,7 @@ export class Login {
   public async requestEmailLogin(
     email: string,
     password: string,
-    constantPincode: string = "114514",
+    constantPincode: string = random6DigitPin(),
     enableE2EE: boolean = true,
   ): Promise<string> {
     if (constantPincode.length !== 6) {
@@ -364,10 +367,7 @@ export class Login {
 
     this.client.log("login", {
       method: "email_v1",
-      email,
-      password: password.length,
       enableE2EE,
-      constantPincode,
     });
 
     const rsaKey = await this.getRSAKeyInfo();
@@ -424,7 +424,10 @@ export class Login {
             })
             .then((res) => res.json())
         ).result;
-        this.client.log("response", e2eeInfo);
+        this.client.log("response", {
+          method: "email_e2ee_info",
+          received: Boolean(e2eeInfo?.metadata),
+        });
         await this.client.e2ee.decodeE2EEKeyV1(e2eeInfo.metadata, Buffer.from(secret));
         const deviceSecret = this.client.e2ee.encryptDeviceSecret(
           Buffer.from(e2eeInfo.metadata.publicKey, "base64"),
@@ -457,7 +460,10 @@ export class Login {
             headers: headers,
           })
           .then((res) => res.json());
-        this.client.log("response", verifier);
+        this.client.log("response", {
+          method: "email_verifier",
+          verified: Boolean(verifier?.result?.verifier),
+        });
         response = await this.loginV2(
           keynm,
           encryptedMessage,
@@ -479,7 +485,7 @@ export class Login {
   public async requestEmailLoginV2(
     email: string,
     password: string,
-    constantPincode: string = "114514",
+    constantPincode: string = random6DigitPin(),
   ): Promise<string> {
     if (constantPincode.length !== 6) {
       throw new InternalError(
@@ -490,9 +496,6 @@ export class Login {
 
     this.client.log("login", {
       method: "email",
-      email,
-      password: password.length,
-      constantPincode,
     });
 
     const rsaKey = await this.getRSAKeyInfo();
@@ -545,7 +548,10 @@ export class Login {
           })
           .then((res) => res.json())
       ).result;
-      this.client.log("response", e2eeInfo);
+      this.client.log("response", {
+        method: "email_e2ee_info",
+        received: Boolean(e2eeInfo?.metadata),
+      });
       await this.client.e2ee.decodeE2EEKeyV1(e2eeInfo.metadata, Buffer.from(secret));
       const deviceSecret = this.client.e2ee.encryptDeviceSecret(
         Buffer.from(e2eeInfo.metadata.publicKey, "base64"),

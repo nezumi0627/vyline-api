@@ -74,7 +74,7 @@ export const loginWithQR = async (opts: WithQROptions, init: InitOptions): Promi
 export interface WithPasswordOptions {
   email: string;
   password: string;
-  /** @default 114514 */
+  /** Optional custom 6-digit PIN. A CSPRNG-generated PIN is used when omitted. */
   pincode?: string;
 
   onPincodeRequest(pin: string): void | Promise<void>;

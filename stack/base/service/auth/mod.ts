@@ -11,6 +11,7 @@ export class AuthService implements BaseService {
   protocolType: ProtocolKey = 4;
   requestPath = "/AS4";
   errorName = "AuthServiceError";
+  private refreshInflight: Promise<void> | null = null;
   constructor(client: BaseClient) {
     this.client = client;
   }
@@ -18,20 +19,30 @@ export class AuthService implements BaseService {
   /**
    * @description Try to refresh token.
    */
-  public async tryRefreshToken() {
-    const refreshToken = await this.client.storage.get("refreshToken");
-    if (typeof refreshToken === "string") {
+  public async tryRefreshToken(): Promise<void> {
+    if (this.refreshInflight) return this.refreshInflight;
+
+    this.refreshInflight = (async () => {
+      const refreshToken = await this.client.storage.get("refreshToken");
+      if (typeof refreshToken !== "string" || !refreshToken) {
+        throw new InternalError("RefreshError", "refreshToken not found");
+      }
+
       const RATR = await this.refresh({ request: { refreshToken } });
       this.client.authToken = RATR.accessToken;
-      this.client.emit("update:authtoken", RATR.accessToken);
+      if (typeof RATR.refreshToken === "string" && RATR.refreshToken) {
+        await this.client.storage.set("refreshToken", RATR.refreshToken);
+      }
       await this.client.storage.set(
         "expire",
-        ((RATR.tokenIssueTimeEpochSec as number) +
-          (RATR.durationUntilRefreshInSec as number)) as number,
+        (RATR.tokenIssueTimeEpochSec as number) + (RATR.durationUntilRefreshInSec as number),
       );
-    } else {
-      throw new InternalError("RefreshError", "refreshToken not found");
-    }
+      this.client.emit("update:authtoken", RATR.accessToken);
+    })().finally(() => {
+      this.refreshInflight = null;
+    });
+
+    return this.refreshInflight;
   }
 
   async refresh(
@@ -260,9 +271,8 @@ export class AuthService implements BaseService {
     } catch (_) {
       throw new InternalError(
         "RequestError",
-        `Invalid response buffer for logoutZ: <${[...parsedBody]
-          .map((v) => v.toString(16))
-          .join(" ")}>`,
+        `Invalid response buffer for logoutZ: status=${response.status} ` +
+          `responseBytes=${parsedBody.byteLength}`,
       );
     }
     this.client.thrift.rename_data(res, false);
@@ -274,7 +284,7 @@ export class AuthService implements BaseService {
     if (res.data.e && !isRefresh) {
       throw new InternalError(
         "RequestError",
-        `logoutZ(${path}) -> ` + JSON.stringify(res.data.e),
+        `logoutZ(${path}) failed`,
         res.data.e,
       );
     }

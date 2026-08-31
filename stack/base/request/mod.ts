@@ -139,7 +139,6 @@ export class RequestClient {
     };
 
     this.client.log("writeThrift", {
-      value,
       methodName,
       protocolType,
     });
@@ -150,9 +149,8 @@ export class RequestClient {
       methodName,
       path: `https://${this.endpoint}${path}`,
       method: overrideMethod,
-      headers,
       timeout,
-      body: Trequest,
+      requestBytes: Trequest.byteLength,
     });
 
     const request = new Request(`https://${this.endpoint}${path}`, {
@@ -176,9 +174,9 @@ export class RequestClient {
     const body = await response.arrayBuffer();
     const parsedBody = new Uint8Array(body);
     this.client.log("response", {
-      ...response,
-      parsedBody,
       methodName,
+      status: response.status,
+      responseBytes: parsedBody.byteLength,
     });
     let res: ParsedThrift;
     let hasError = false;
@@ -186,9 +184,8 @@ export class RequestClient {
       res = this.client.thrift.readThrift(parsedBody, protocol);
     } catch {
       throw new Error(
-        `Request internal failed: status=${response.status} ` +
-          `headers=${JSON.stringify([...response.headers.entries()])} ` +
-          `body=<${[...parsedBody].map((e) => e.toString(16)).join(" ")}>`,
+        `Request internal failed: ${methodName}(${path}) status=${response.status} ` +
+          `responseBytes=${parsedBody.byteLength}`,
       );
     }
     if (!res.data[0] && Object.keys(res.data).length) {
@@ -223,7 +220,10 @@ export class RequestClient {
     }
 
     this.client.log("readThrift", {
-      res,
+      methodName,
+      protocolType,
+      hasError,
+      responseBytes: parsedBody.byteLength,
     });
 
     const isRefresh = Boolean(
@@ -235,7 +235,7 @@ export class RequestClient {
     if (res.data.e && !isRefresh) {
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path}) -> ` + JSON.stringify(res.data.e),
+        `Request internal failed, ${methodName}(${path})`,
         res.data.e,
       );
     }
@@ -246,7 +246,7 @@ export class RequestClient {
       }
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path}) -> ` + JSON.stringify(res.data),
+        `Request internal failed, ${methodName}(${path})`,
         res.data,
       );
     }
