@@ -7,6 +7,7 @@ export declare class AuthService implements BaseService {
     protocolType: ProtocolKey;
     requestPath: string;
     errorName: string;
+    private refreshInflight;
     constructor(client: BaseClient);
     /**
      * @description Try to refresh token.
