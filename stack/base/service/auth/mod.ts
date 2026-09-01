@@ -271,9 +271,8 @@ export class AuthService implements BaseService {
     } catch (_) {
       throw new InternalError(
         "RequestError",
-        `Invalid response buffer for logoutZ: <${[...parsedBody]
-          .map((v) => v.toString(16))
-          .join(" ")}>`,
+        `Invalid response buffer for logoutZ: status=${response.status} ` +
+          `responseBytes=${parsedBody.byteLength}`,
       );
     }
     this.client.thrift.rename_data(res, false);
@@ -285,7 +284,7 @@ export class AuthService implements BaseService {
     if (res.data.e && !isRefresh) {
       throw new InternalError(
         "RequestError",
-        `logoutZ(${path}) -> ` + JSON.stringify(res.data.e),
+        `logoutZ(${path}) failed`,
         res.data.e,
       );
     }

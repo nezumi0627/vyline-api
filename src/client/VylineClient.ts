@@ -74,18 +74,90 @@ function createBase(init: VylineLoginInit): { base: BaseClient; mode: VylineDevi
   return { base, mode };
 }
 
-async function finalizeLogin(
+function authTokenIssued(base: BaseClient): boolean {
+  return Boolean(base.authToken);
+}
+
+/**
+ * LINE considers the secondary device logged in as soon as an auth token is
+ * issued. Certificate/E2EE persistence happens afterwards and must not turn an
+ * already-authorized account into a failed Vyline login.
+ */
+async function waitForIssuedAuthToken(base: BaseClient, task: Promise<unknown>): Promise<void> {
+  let settled = false;
+  let failure: unknown;
+  void task.then(
+    () => {
+      settled = true;
+    },
+    (error) => {
+      failure = error;
+      settled = true;
+    },
+  );
+
+  while (!settled && !authTokenIssued(base)) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
+  if (authTokenIssued(base)) return;
+  if (failure !== undefined) throw failure;
+  await task;
+  if (!authTokenIssued(base)) throw new Error("login completed without auth token");
+}
+
+function continuePostAuthFinalize(
   base: BaseClient,
   profile: DesktopProfile,
   mode: VylineDeviceMode,
-  desktopKeysPath?: string,
+  desktopKeysPath: string | undefined,
+  task: Promise<unknown>,
+): void {
+  void task
+    .then(async () => {
+      try {
+        await base.loginProcess.ready();
+        if (isDesktopEmulation(mode)) patchDesktopTransport(base, profile);
+        try {
+          const e2ee = await ensureValidE2EEIdentity(
+            base,
+            desktopKeysPath ? { desktopKeysPath } : {},
+          );
+          base.log("vyline:e2ee", { phase: "ensure-after-login", mode, ...e2ee });
+        } catch (error) {
+          base.log("vyline:auth:post-auth-warning", {
+            phase: "e2ee",
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } catch (error) {
+        base.log("vyline:auth:post-auth-warning", {
+          phase: "finalize",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })
+    .catch((error) => {
+      // If LINE already issued a token this is a post-auth failure. The token is
+      // still usable and the backend will persist it immediately.
+      if (authTokenIssued(base)) {
+        base.log("vyline:auth:post-auth-warning", {
+          phase: "login-task",
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+}
+
+async function returnOnIssuedAuthToken(
+  base: BaseClient,
+  profile: DesktopProfile,
+  mode: VylineDeviceMode,
+  desktopKeysPath: string | undefined,
+  task: Promise<unknown>,
 ): Promise<VylineClient> {
-  await base.loginProcess.ready();
-  if (isDesktopEmulation(mode)) {
-    patchDesktopTransport(base, profile);
-  }
-  const e2ee = await ensureValidE2EEIdentity(base, desktopKeysPath ? { desktopKeysPath } : {});
-  base.log("vyline:e2ee", { phase: "ensure-after-login", mode, ...e2ee });
+  await waitForIssuedAuthToken(base, task);
+  if (isDesktopEmulation(mode)) patchDesktopTransport(base, profile);
+  continuePostAuthFinalize(base, profile, mode, desktopKeysPath, task);
   return new Client(base);
 }
 
@@ -103,12 +175,12 @@ export async function loginWithEmail(
   if (isDesktopEmulation(mode)) {
     patchDesktopTransport(base, init.profile);
   }
-  await base.loginProcess.withPassword({
+  const task = base.loginProcess.withPassword({
     email: opts.email,
     password: opts.password,
     ...(opts.pincode !== undefined ? { pincode: opts.pincode } : {}),
   });
-  return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
+  return returnOnIssuedAuthToken(base, init.profile, mode, init.desktopKeysPath, task);
 }
 
 export async function loginWithQR(
@@ -124,8 +196,8 @@ export async function loginWithQR(
   if (isDesktopEmulation(mode)) {
     patchDesktopTransport(base, init.profile);
   }
-  await base.loginProcess.withQrCode({});
-  return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
+  const task = base.loginProcess.withQrCode({});
+  return returnOnIssuedAuthToken(base, init.profile, mode, init.desktopKeysPath, task);
 }
 
 export async function loginWithToken(
@@ -136,14 +208,14 @@ export async function loginWithToken(
   if (isDesktopEmulation(mode)) {
     patchDesktopTransport(base, init.profile);
   }
-  await base.loginProcess.login({ authToken });
-  return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
+  const task = base.loginProcess.login({ authToken });
+  return returnOnIssuedAuthToken(base, init.profile, mode, init.desktopKeysPath, task);
 }
 
 export async function loginWithStoredRefreshToken(init: VylineLoginInit): Promise<VylineClient> {
   const { base, mode } = createBase(init);
-  await base.auth.tryRefreshToken();
-  return finalizeLogin(base, init.profile, mode, init.desktopKeysPath);
+  const task = base.auth.tryRefreshToken();
+  return returnOnIssuedAuthToken(base, init.profile, mode, init.desktopKeysPath, task);
 }
 
 export async function sendText(

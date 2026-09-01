@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { type BaseClient } from "../core/mod.js";
 import type { Message } from "@vyline/line-types";
 export type ObjType = "image" | "gif" | "video" | "audio" | "file";
@@ -37,6 +38,27 @@ export interface ObsMetadata {
     userid: string;
     sid: string;
 }
+export interface E2eeMediaFileResult {
+    path: string;
+    size: number;
+}
+export interface DownloadedE2eeMediaFile extends E2eeMediaFileResult {
+    fileName: string;
+    contentType: string;
+}
+export type E2eeMediaBeforeWrite = (nextTotalBytes: number, pendingBytes: number) => void | Promise<void>;
+interface E2eeMediaKeys {
+    encKey: Buffer;
+    macKey: Buffer;
+    nonce: Buffer;
+}
+/** Encrypt one media file with bounded buffers and append LINE's HMAC tag. */
+export declare function encryptE2eeMediaFile(sourcePath: string, targetPath: string, keys: E2eeMediaKeys, maxBytes?: number, signal?: AbortSignal): Promise<E2eeMediaFileResult>;
+/**
+ * Authenticate and decrypt an OBS response into an unpublished file. Only the
+ * final 32-byte tag and the current network chunk are retained in memory.
+ */
+export declare function decryptE2eeMediaResponseToFile(response: Response, targetPath: string, keys: E2eeMediaKeys, maxBytes?: number, signal?: AbortSignal, beforeWrite?: E2eeMediaBeforeWrite): Promise<E2eeMediaFileResult>;
 export declare class LineObs {
     client: BaseClient;
     prefix: string;
@@ -72,7 +94,7 @@ export declare class LineObs {
     /**
      * @description Upload obs message to talk.
      */
-    uploadObjTalk(to: string, type: ObjType, data: Blob, oid?: string, filename?: string, durationMs?: number, reqseqOverride?: number): Promise<{
+    uploadObjTalk(to: string, type: ObjType, data: Blob, oid?: string, filename?: string, durationMs?: number, reqseqOverride?: number, signal?: AbortSignal): Promise<{
         objId: string;
         objHash: string;
         headers: Headers;
@@ -82,11 +104,22 @@ export declare class LineObs {
         data: Blob;
         filename?: string;
         durationMs?: number;
-    }>): Promise<Array<{
+    }>, signal?: AbortSignal): Promise<Array<{
         objId: string;
         objHash: string;
         headers: Headers;
+    } | {
+        error: unknown;
     }>>;
+    uploadObjTalkMessage(options: {
+        to: string;
+        type: ObjType;
+        data: Blob;
+        filename?: string;
+        durationMs?: number;
+        relatedMessageId?: string;
+        messageRelationType?: "FORWARD" | "AUTO_REPLY" | "SUBORDINATE" | "REPLY";
+    }): Promise<Message>;
     uploadObjectForService(options: {
         data: Blob;
         oType?: ObjType;
@@ -94,11 +127,18 @@ export declare class LineObs {
         params?: Record<string, string | undefined>;
         filename?: string;
         addHeaders?: Record<string, string>;
+        signal?: AbortSignal;
     }): Promise<{
         objId: string;
         objHash: string;
         headers: Headers;
     }>;
+    downloadObjectResponseForService(options: {
+        obsPath: string;
+        oid: string;
+        addHeaders?: Record<string, string>;
+        signal?: AbortSignal;
+    }): Promise<Response>;
     downloadObjectForService(options: {
         obsPath: string;
         oid: string;
@@ -114,14 +154,27 @@ export declare class LineObs {
         relatedMessageId?: string;
         messageRelationType?: "FORWARD" | "AUTO_REPLY" | "SUBORDINATE" | "REPLY";
     }): Promise<Message>;
-    uploadObjTalkMessage(options: {
+    /**
+     * File-backed E2EE upload for large media. Encryption is written beside the
+     * staged source and OBS receives a file-backed Blob, so neither plaintext nor
+     * ciphertext scales the JavaScript heap.
+     */
+    uploadMediaByE2EEFromFile(options: {
+        dataPath: string;
+        size: number;
+        mimeType: string;
+        oType: ObjType;
         to: string;
-        type: ObjType;
-        data: Blob;
         filename?: string;
-        durationMs?: number;
+        previewPath?: string;
+        previewSize?: number;
         relatedMessageId?: string;
         messageRelationType?: "FORWARD" | "AUTO_REPLY" | "SUBORDINATE" | "REPLY";
+        maxBytes?: number;
+        signal?: AbortSignal;
     }): Promise<Message>;
+    private prepareE2eeMediaDownload;
+    downloadMediaByE2EEToFile(message: Message, targetPath: string, maxBytes?: number, signal?: AbortSignal, beforeWrite?: E2eeMediaBeforeWrite): Promise<DownloadedE2eeMediaFile | null>;
     downloadMediaByE2EE(message: Message): Promise<File | null>;
 }
+export {};

@@ -346,6 +346,13 @@ export declare function GetRequest(param?: PartialDeep<LINETypes.GetRequest> | u
 export declare function BulkGetRequest(param?: PartialDeep<LINETypes.BulkGetRequest> | undefined): NestedArray;
 export declare function BuyMustbuyRequest(param?: PartialDeep<LINETypes.BuyMustbuyRequest> | undefined): NestedArray;
 export declare function CanCreateCombinationStickerRequest(param?: PartialDeep<LINETypes.CanCreateCombinationStickerRequest> | undefined): NestedArray;
+export declare function StickerLayoutInfo(param?: PartialDeep<LINETypes.StickerLayoutInfo> | undefined): NestedArray;
+export declare function StickerLayoutStickerInfo(param?: PartialDeep<LINETypes.StickerLayoutStickerInfo> | undefined): NestedArray;
+export declare function StickerLayout(param?: PartialDeep<LINETypes.StickerLayout> | undefined): NestedArray;
+export declare function CombinationStickerMetadata(param?: PartialDeep<LINETypes.CombinationStickerMetadata> | undefined): NestedArray;
+export declare function CombinationStickerStickerData(param?: PartialDeep<LINETypes.CombinationStickerStickerData> | undefined): NestedArray;
+export declare function CreateCombinationStickerResponse(param?: PartialDeep<LINETypes.CreateCombinationStickerResponse> | undefined): NestedArray;
+export declare function CreateCombinationStickerRequest(param?: PartialDeep<LINETypes.CreateCombinationStickerRequest> | undefined): NestedArray;
 export declare function CancelChatInvitationRequest(param?: PartialDeep<LINETypes.CancelChatInvitationRequest> | undefined): NestedArray;
 export declare function CancelPaakAuthRequest(param?: PartialDeep<LINETypes.CancelPaakAuthRequest> | undefined): NestedArray;
 export declare function CancelPaakAuthenticationRequest(param?: PartialDeep<LINETypes.CancelPaakAuthenticationRequest> | undefined): NestedArray;
@@ -439,6 +446,8 @@ export declare function GetCoinHistoryRequest(param?: PartialDeep<LINETypes.GetC
 export declare function Configurations(param?: PartialDeep<LINETypes.Configurations> | undefined): NestedArray;
 export declare function ChannelErrorCode(param: LINETypes.ChannelErrorCode | undefined): (LINETypes.ChannelErrorCode & number) | undefined;
 export declare function ChannelException(param?: PartialDeep<LINETypes.ChannelException> | undefined): NestedArray;
+export declare function Ob1_EnumC12652p1(param: LINETypes.Ob1_EnumC12652p1 | undefined): (LINETypes.Ob1_EnumC12652p1 & number) | undefined;
+export declare function ShopException(param?: PartialDeep<LINETypes.ShopException> | undefined): NestedArray;
 export declare function GetContactCalendarEventTarget(param?: PartialDeep<LINETypes.GetContactCalendarEventTarget> | undefined): NestedArray;
 export declare function GetContactCalendarEventsRequest(param?: PartialDeep<LINETypes.GetContactCalendarEventsRequest> | undefined): NestedArray;
 export declare function GetContactV3Target(param?: PartialDeep<LINETypes.GetContactV3Target> | undefined): NestedArray;
@@ -855,6 +864,7 @@ export declare function createChatRoomAnnouncement_args(param?: PartialDeep<LINE
 export declare function createChat_args(param?: PartialDeep<LINETypes.createChat_args> | undefined): NestedArray;
 export declare function createCollectionForUser_args(param?: PartialDeep<LINETypes.createCollectionForUser_args> | undefined): NestedArray;
 export declare function createCombinationSticker_args(param?: PartialDeep<LINETypes.createCombinationSticker_args> | undefined): NestedArray;
+export declare function createCombinationSticker_result(param?: PartialDeep<LINETypes.createCombinationSticker_result> | undefined): NestedArray;
 export declare function createE2EEKeyBackupEnforced_args(param?: PartialDeep<LINETypes.createE2EEKeyBackupEnforced_args> | undefined): NestedArray;
 export declare function createGroupCallUrl_args(param?: PartialDeep<LINETypes.createGroupCallUrl_args> | undefined): NestedArray;
 export declare function createLifetimeKeyBackup_args(param?: PartialDeep<LINETypes.createLifetimeKeyBackup_args> | undefined): NestedArray;
@@ -1131,6 +1141,16 @@ export declare function reserveCoinPurchase_args(param?: PartialDeep<LINETypes.r
 export declare function reserveSubscriptionPurchase_args(param?: PartialDeep<LINETypes.reserveSubscriptionPurchase_args> | undefined): NestedArray;
 export declare function reserve_args(param?: PartialDeep<LINETypes.reserve_args> | undefined): NestedArray;
 export declare function restoreE2EEKeyBackup_args(param?: PartialDeep<LINETypes.restoreE2EEKeyBackup_args> | undefined): NestedArray;
+export declare function RestoreLifetimeKeyBackupHeaderRequest(param?: PartialDeep<LINETypes.RestoreLifetimeKeyBackupHeaderRequest> | undefined): NestedArray;
+export declare function ValidateLifetimeKeyBackupRequest(param?: PartialDeep<LINETypes.ValidateLifetimeKeyBackupRequest> | undefined): NestedArray;
+export declare function AddLifetimeKeyBackupPayloadDataListRequest(param?: PartialDeep<LINETypes.AddLifetimeKeyBackupPayloadDataListRequest> | undefined): NestedArray;
+export declare function UpdateLifetimeKeyBackupHeaderRequest(param?: PartialDeep<LINETypes.UpdateLifetimeKeyBackupHeaderRequest> | undefined): NestedArray;
+export declare function GetLifetimeKeyBackupPayloadDataListRequest(param?: PartialDeep<LINETypes.GetLifetimeKeyBackupPayloadDataListRequest> | undefined): NestedArray;
+export declare function restoreLifetimeKeyBackupHeader_args(param?: PartialDeep<LINETypes.restoreLifetimeKeyBackupHeader_args> | undefined): NestedArray;
+export declare function validateLifetimeKeyBackup_args(param?: PartialDeep<LINETypes.validateLifetimeKeyBackup_args> | undefined): NestedArray;
+export declare function addLifetimeKeyBackupPayloadDataList_args(param?: PartialDeep<LINETypes.addLifetimeKeyBackupPayloadDataList_args> | undefined): NestedArray;
+export declare function updateLifetimeKeyBackupHeader_args(param?: PartialDeep<LINETypes.updateLifetimeKeyBackupHeader_args> | undefined): NestedArray;
+export declare function getLifetimeKeyBackupPayloadDataList_args(param?: PartialDeep<LINETypes.getLifetimeKeyBackupPayloadDataList_args> | undefined): NestedArray;
 export declare function retrieveRequestTokenWithDocomoV2_args(param?: PartialDeep<LINETypes.retrieveRequestTokenWithDocomoV2_args> | undefined): NestedArray;
 export declare function retrieveRequestToken_args(param?: PartialDeep<LINETypes.retrieveRequestToken_args> | undefined): NestedArray;
 export declare function revokeTokens_args(param?: PartialDeep<LINETypes.revokeTokens_args> | undefined): NestedArray;

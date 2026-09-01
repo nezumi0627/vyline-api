@@ -60,7 +60,7 @@ export declare function buildAlbumUrl(endpoint: string, path: string, query?: Re
 /** LINE Album JSON REST client (iOS 26.12.1 observed API). */
 export declare class Album {
     private readonly client;
-    private token?;
+    private static readonly CHANNEL_ID;
     constructor(client: BaseClient);
     private channelToken;
     private json;
@@ -150,6 +150,7 @@ export declare class Album {
         mediaType?: "image" | "video";
     }): Promise<Response>;
     private headers;
+    /** Album API の低レベル入口。個人／グループは chatMid を body に含めて指定する。 */
     call<T = LooseType>(options: {
         path: string;
         method?: "GET" | "POST" | "PUT" | "DELETE";

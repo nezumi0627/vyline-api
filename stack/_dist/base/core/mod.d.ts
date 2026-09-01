@@ -17,6 +17,7 @@ import { Timeline } from "../timeline/mod.js";
 import { Album } from "../album/mod.js";
 import { Polling } from "../polling/mod.js";
 import { ConnManager } from "../push/mod.js";
+import { ChannelTokenManager } from "../channel-token/mod.js";
 import type * as LINETypes from "@vyline/line-types";
 import type { Fetch, FetchLike } from "../types.ts";
 import type { LooseType } from "@vyline/loose-types";
@@ -95,6 +96,7 @@ export declare class BaseClient extends TypedEventEmitter<ClientEvents> {
     readonly album: Album;
     readonly poll: Polling;
     readonly push: ConnManager;
+    readonly channelTokens: ChannelTokenManager;
     readonly auth: AuthService;
     readonly call: CallService;
     readonly channel: ChannelService;
@@ -140,6 +142,8 @@ export declare class BaseClient extends TypedEventEmitter<ClientEvents> {
     log(type: string, data: Record<string, LooseType>): void;
     getToType(mid: string): number | null;
     reqseqs?: Record<string, number>;
+    /** 初回ロードを promise キャッシュし、並列呼び出しでも二重読み込みしない */
+    private loadReqseqs;
     getReqseq(name?: string): Promise<number>;
     getReqseqs(name?: string, count?: number): Promise<number[]>;
     readonly fetch: Fetch;
