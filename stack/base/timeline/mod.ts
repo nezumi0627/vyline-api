@@ -519,6 +519,80 @@ export class Timeline {
       .then((r) => r.json());
   }
 
+  public async listComments(options: {
+    contentId: string;
+    homeId: string;
+    sourceType?: string;
+  }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({
+      contentId: options.contentId,
+      homeId: options.homeId,
+      sourceType: options.sourceType ?? "GROUPHOME_END",
+    });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/comment/getList.json?${params}`,
+      { headers: { ...this.timelineHeaders, "x-lhm": "GET" } },
+    ).then((r) => r.json());
+  }
+
+  public async deleteComment(options: {
+    contentId: string;
+    commentId: string;
+    homeId: string;
+    sourceType?: string;
+  }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({
+      homeId: options.homeId,
+      sourceType: options.sourceType ?? "GROUPHOME_END",
+    });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/comment/delete.json?${params}`,
+      {
+        headers: { ...this.timelineHeaders, "x-lhm": "POST" },
+        method: "POST",
+        body: JSON.stringify({ contentId: options.contentId, commentId: options.commentId }),
+      },
+    ).then((r) => r.json());
+  }
+
+  public async likeComment(options: {
+    commentId: string;
+    homeId: string;
+    likeType?: "1003" | "1001" | "1002" | "1004" | "1006" | "1005";
+  }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({ homeId: options.homeId });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/create.json?${params}`,
+      {
+        headers: { ...this.timelineHeaders, "x-lhm": "POST" },
+        method: "POST",
+        body: JSON.stringify({
+          sourceType: "GROUPHOME_END",
+          parentType: "comment",
+          contentId: options.commentId,
+          likeType: options.likeType ?? "1003",
+        }),
+      },
+    ).then((r) => r.json());
+  }
+
+  public async unlikeComment(options: { commentId: string; homeId: string }): Promise<TimelineResponse> {
+    await this.initTimeline();
+    const params = new URLSearchParams({
+      homeId: options.homeId,
+      sourceType: "GROUPHOME_END",
+      parentType: "comment",
+      contentId: options.commentId,
+    });
+    return await this.client.fetch(
+      `https://${CONTENT_GATEWAY}/ext/note/nt/api/v57/like/cancel.json?${params}`,
+      { headers: { ...this.timelineHeaders, "x-lhm": "POST" }, method: "POST" },
+    ).then((r) => r.json());
+  }
+
   public async sharePost(options: {
     postId: string;
     homeId: string;
@@ -561,50 +635,18 @@ export class Timeline {
       .then((r) => r.json());
   }
 
-  /** Upload Note post media using the current iOS/iPad OBS path. */
+  /** Upload Note post media using the legacy timeline-authenticated OBS endpoint. */
   public async uploadNoteMedia(
     type: "image" | "video",
     data: Blob,
   ): Promise<{ objId: string; objHash: string }> {
     await this.initTimeline();
-    const requestedOid = crypto.randomUUID().replaceAll("-", "");
-    const extension = type === "video" ? "mp4" : "jpg";
-    const uploadName = `${crypto.randomUUID().toUpperCase()}.${extension}`;
-    const params = {
-      ver: "2.0",
-      type,
-      name: uploadName,
-    };
-    const res: Response = await this.client.fetch(
-      `https://obs-jp.line-apps.com/r/privnote/post/${requestedOid}`,
-      {
-        method: "POST",
-        headers: {
-          Accept: "*/*",
-          "Accept-Language": "ja",
-          "X-Line-ChannelToken": this.timelineToken!,
-          "X-Line-Application": this.timelineHeaders["x-line-application"]!,
-          "User-Agent": this.timelineHeaders["user-agent"]!,
-          "x-lal": "ja_JP",
-          "Upload-Draft-Interop-Version": "6",
-          "Upload-Complete": "?1",
-          "content-type": "application/octet-stream",
-          "content-length": String(data.size),
-          "x-obs-params": Buffer.from(JSON.stringify(params)).toString("base64"),
-        },
-        body: data,
-      },
-    );
-    if (res.status !== 201) {
-      const detail = (await res.text())
-        .slice(0, 500)
-        .replace(/[A-Za-z0-9+/_=-]{40,}/g, "<redacted>");
-      throw new Error(`Note media upload failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`);
-    }
-    return {
-      objId: res.headers.get("x-obs-oid") ?? requestedOid,
-      objHash: res.headers.get("x-obs-hash") ?? "",
-    };
+    const objId = crypto
+      .createHash("md5")
+      .update(`${this.client.profile!.mid}-${Date.now()}`)
+      .digest("hex");
+    const res = await this.#uploadObjNhn("myhome/h", objId, type, data);
+    return { objId, objHash: res.headers.get("x-obs-hash") ?? "" };
   }
 
   /**

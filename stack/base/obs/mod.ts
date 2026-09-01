@@ -380,6 +380,7 @@ export class LineObs {
     durationMs?: number,
     reqseqOverride?: number,
     signal?: AbortSignal,
+    batchMeta?: { total: number; sequence: number; gid: string },
   ): Promise<{
     objId: string;
     objHash: string;
@@ -423,12 +424,50 @@ export class LineObs {
       param.duration = (durationMs ?? 1919).toString();
     }
     const toType: "talk" | "g2" = to[0] === "m" || to[0] === "t" ? "g2" : "talk";
+    const senderMid = this.client.profile?.mid;
+    if (!oid && !senderMid) {
+      throw new InternalError("ObsError", "Profile MID is required for talk reqseq upload");
+    }
+    const addHeaders: Record<string, string> = {
+      ...(senderMid ? { "X-Line-Mid": senderMid } : {}),
+      ...(batchMeta
+        ? {
+            "X-Talk-Meta": Buffer.from(
+              JSON.stringify({
+                message: Buffer.from(
+                  writeStruct(
+                    [
+                      [
+                        13,
+                        18,
+                        [
+                          11,
+                          11,
+                          {
+                            GTOTAL: String(batchMeta.total),
+                            GID: batchMeta.gid,
+                            GSEQ: String(batchMeta.sequence),
+                          },
+                        ],
+                      ],
+                    ],
+                    thrift.TBinaryProtocol,
+                  ),
+                ).toString("base64"),
+              }),
+            ).toString("base64"),
+            "Upload-Draft-Interop-Version": "6",
+            "Upload-Complete": "?1",
+          }
+        : {}),
+    };
     return await this.uploadObjectForService({
       data,
       oType: type,
       obsPath: `${toType}/m/${oid ?? "reqseq"}`,
       filename: param.name,
       params: param,
+      addHeaders,
       signal,
     });
   }
@@ -445,27 +484,57 @@ export class LineObs {
   ): Promise<Array<{ objId: string; objHash: string; headers: Headers } | { error: unknown }>> {
     if (!items.length) return [];
     const reqseqs = await this.client.getReqseqs("talk", items.length);
+    const grouped =
+      items.length > 1 && items.every((item) => item.type === "image" || item.type === "gif");
+    let gid = "0";
     // 順次アップロード。失敗は結果に記録し、成功済み分を保持する
     //（Promise.all だと 1 失敗で全体が throw され、部分成功が分からなくなる）
-    const out: Array<{ objId: string; objHash: string; headers: Headers } | { error: unknown }> = [];
+    const out: Array<{ objId: string; objHash: string; headers: Headers } | { error: unknown }> =
+      [];
     for (let index = 0; index < items.length; index++) {
       signal?.throwIfAborted();
       const item = items[index]!;
       try {
-        out.push(
-          await this.uploadObjTalk(
-            to,
-            item.type,
-            item.data,
-            undefined,
-            item.filename,
-            item.durationMs,
-            reqseqs[index],
-            signal,
-          ),
+        const result = await this.uploadObjTalk(
+          to,
+          item.type,
+          item.data,
+          undefined,
+          item.filename,
+          item.durationMs,
+          reqseqs[index],
+          signal,
+          grouped
+            ? {
+                total: items.length,
+                sequence: index + 1,
+                gid,
+              }
+            : undefined,
         );
+        out.push(result);
+        if (grouped && index === 0) {
+          const serverGid = result.headers.get("x-line-message-gid");
+          if (!serverGid) {
+            const error = new InternalError(
+              "ObsError",
+              "Grouped upload did not return x-line-message-gid",
+            );
+            for (let rest = index + 1; rest < items.length; rest++) {
+              out.push({ error });
+            }
+            break;
+          }
+          gid = serverGid;
+        }
       } catch (error) {
         out.push({ error });
+        if (grouped && index === 0) {
+          for (let rest = index + 1; rest < items.length; rest++) {
+            out.push({ error });
+          }
+          break;
+        }
       }
     }
     return out;
