@@ -44,7 +44,7 @@ Deno.test("parseCandidate accepts the full 'a=candidate:' prefix", () => {
   assertEquals(c?.type, "host");
 });
 
-Deno.test("gatherIceCandidates: live host + srflx via Google STUN", async () => {
+if (process.env.VYLINE_RUN_NETWORK_TESTS === "1") Deno.test("gatherIceCandidates: live host + srflx via Google STUN", async () => {
   const { socket, candidates } = await gatherIceCandidates({
     stunHost: "stun.l.google.com",
     stunPort: 19302,

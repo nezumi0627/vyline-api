@@ -25,7 +25,7 @@ Deno.test("buildBindingRequest + parseStun round-trip", async () => {
   assert(parsed.attrs.has(0x8028));
 });
 
-Deno.test("STUN live probe against stun.l.google.com:19302 — discovers XOR-MAPPED-ADDRESS", async () => {
+if (process.env.VYLINE_RUN_NETWORK_TESTS === "1") Deno.test("STUN live probe against stun.l.google.com:19302 — discovers XOR-MAPPED-ADDRESS", async () => {
   const sock = dgram.createSocket("udp4");
   await new Promise<void>((r) => sock.bind({ address: "0.0.0.0", port: 0 }, () => r()));
   const respPromise = new Promise<Uint8Array>((res, rj) => {
