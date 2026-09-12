@@ -5,8 +5,34 @@
  * (同時書き込みで JSON が壊れないようにキュー化)。
  */
 
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
+
+const PRIVATE_DIRECTORY_MODE = 0o700;
+const PRIVATE_FILE_MODE = 0o600;
+
+function chmodPrivate(path: string, mode: number, bestEffort = false): void {
+  // chmod does not provide the intended ACL guarantee on Windows. Keep the
+  // existing Windows behavior and rely on the user's profile ACL there.
+  if (process.platform === "win32") return;
+  try {
+    chmodSync(path, mode);
+  } catch (error) {
+    if (!bestEffort) throw error;
+  }
+}
 
 export type StorageValue = string | number | boolean | null | Record<string | number, unknown>;
 
@@ -23,6 +49,10 @@ export class VylineFileStorage {
     if (this.cache) return this.cache;
     let loaded: Record<string, StorageValue> = {};
     if (existsSync(this.path)) {
+      // Older versions created protocol.json with the process umask. Correct
+      // existing credential storage before reading it whenever the OS permits.
+      chmodPrivate(dirname(this.path), PRIVATE_DIRECTORY_MODE, true);
+      chmodPrivate(this.path, PRIVATE_FILE_MODE, true);
       try {
         loaded = JSON.parse(readFileSync(this.path, "utf-8"));
       } catch {
@@ -34,11 +64,40 @@ export class VylineFileStorage {
   }
 
   private persist(): Promise<void> {
-    const data = this.load();
-    this.writeLock = this.writeLock.then(() => {
-      mkdirSync(dirname(this.path), { recursive: true });
-      writeFileSync(this.path, JSON.stringify(data, null, 2), "utf-8");
-    });
+    // Capture this mutation before queuing the write. A later set/delete must
+    // not change the payload of an already queued atomic replacement.
+    const payload = JSON.stringify(this.load(), null, 2);
+    this.writeLock = this.writeLock
+      .catch(() => undefined)
+      .then(() => {
+        const directory = dirname(this.path);
+        mkdirSync(directory, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+        chmodPrivate(directory, PRIVATE_DIRECTORY_MODE);
+
+        // The temporary file lives beside protocol.json, so rename is atomic and
+        // cannot cross a Docker bind-mount/filesystem boundary.
+        const temporaryPath = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+        let descriptor: number | undefined;
+        try {
+          descriptor = openSync(temporaryPath, "wx", PRIVATE_FILE_MODE);
+          writeFileSync(descriptor, payload, "utf8");
+          fsyncSync(descriptor);
+          closeSync(descriptor);
+          descriptor = undefined;
+          chmodPrivate(temporaryPath, PRIVATE_FILE_MODE);
+          renameSync(temporaryPath, this.path);
+          chmodPrivate(this.path, PRIVATE_FILE_MODE);
+        } finally {
+          if (descriptor !== undefined) {
+            try {
+              closeSync(descriptor);
+            } catch {
+              // Preserve the original write/fsync failure.
+            }
+          }
+          rmSync(temporaryPath, { force: true });
+        }
+      });
     return this.writeLock;
   }
 

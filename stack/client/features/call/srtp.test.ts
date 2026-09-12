@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects } from "@vyline/protocol/stack/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@vyline/protocol/stack/assert";
 import {
   buildRtp,
   deriveSrtpContext,
@@ -25,6 +25,31 @@ Deno.test("buildRtp + parseRtp round-trip", () => {
   assertEquals(p.timestamp, 0xdeadbeef);
   assertEquals(p.ssrc, 0xfeedface);
   assertEquals(Array.from(p.payload), Array.from(payload));
+});
+
+Deno.test("RTP exposes bounded extensions and excludes valid padding", () => {
+  const packet = buildRtp({
+    payloadType: 96,
+    seq: 1,
+    timestamp: 2,
+    ssrc: 3,
+    payload: new Uint8Array([9, 8, 0, 2]),
+    extensionProfile: 0x0240,
+    extensionData: new Uint8Array([3, 1, 12, 0]),
+  });
+  packet[0] |= 0x20;
+  const parsed = parseRtp(packet);
+  assertEquals(parsed.payload, new Uint8Array([9, 8]));
+  assertEquals(parsed.extensionProfile, 0x0240);
+  assertEquals(parsed.extensionData, new Uint8Array([3, 1, 12, 0]));
+  for (const invalid of [
+    new Uint8Array(11),
+    Uint8Array.from(packet, (v, i) => (i === 0 ? v & 0x3f : v)),
+    Uint8Array.from(packet, (v, i) => (i === packet.length - 1 ? 0 : v)),
+    Uint8Array.from(packet, (v, i) => (i === packet.length - 1 ? 5 : v)),
+    Uint8Array.from(packet, (v, i) => (i === 15 ? 2 : v)),
+  ])
+    assertThrows(() => parseRtp(invalid));
 });
 
 Deno.test("SRTP preserves RTP extension headers while encrypting payload", async () => {
@@ -128,4 +153,28 @@ Deno.test("srtpDecrypt rejects tampered tag", async () => {
   const enc = await srtpEncrypt(ctx, rtp);
   enc[enc.length - 1] ^= 0xff;
   await assertRejects(() => srtpDecrypt(ctx, enc), Error, "auth tag mismatch");
+});
+
+Deno.test("SRTP receive tracks sequence rollover, late packets and failed authentication", async () => {
+  const key = new Uint8Array(30).fill(19);
+  const tx = await deriveSrtpContext(key);
+  const rx = await deriveSrtpContext(key);
+  const packets = new Map<number, Uint8Array>();
+  for (const seq of [65534, 65535, 0, 1, 2]) {
+    packets.set(
+      seq,
+      await srtpEncrypt(
+        tx,
+        buildRtp({ payloadType: 97, ssrc: 111, seq, timestamp: 1, payload: new Uint8Array([1]) }),
+      ),
+    );
+  }
+  assertEquals(parseRtp(await srtpDecrypt(rx, packets.get(65534)!)).seq, 65534);
+  const forged = packets.get(0)!.slice();
+  forged[forged.length - 1] ^= 1;
+  await assertRejects(() => srtpDecrypt(rx, forged), Error, "auth tag mismatch");
+  for (const seq of [0, 65535, 1, 2]) {
+    assertEquals(parseRtp(await srtpDecrypt(rx, packets.get(seq)!)).seq, seq);
+  }
+  assertEquals(rx.rocs.get(111), 1);
 });

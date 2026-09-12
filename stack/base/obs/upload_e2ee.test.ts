@@ -1,4 +1,5 @@
 import { assert, assertEquals } from "@vyline/protocol/stack/assert";
+import { test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { LineObs } from "./mod.ts";
 
@@ -58,7 +59,7 @@ function makeObs(): {
   return { obs, fake };
 }
 
-Deno.test("uploadMediaByE2EE — without preview, legacy: full edata uploaded twice (#103)", async () => {
+test("uploadMediaByE2EE — without preview, legacy: full edata uploaded twice (#103)", async () => {
   const { obs, fake } = makeObs();
   const big = new Blob([new Uint8Array(100_000)]);
   await obs.uploadMediaByE2EE({
@@ -72,7 +73,7 @@ Deno.test("uploadMediaByE2EE — without preview, legacy: full edata uploaded tw
   assert(fake.records[1].obsPath.endsWith("__ud-preview"));
 });
 
-Deno.test("uploadMediaByE2EE — with preview, preview upload uses small blob (#103)", async () => {
+test("uploadMediaByE2EE — with preview, preview upload uses small blob (#103)", async () => {
   const { obs, fake } = makeObs();
   const big = new Blob([new Uint8Array(100_000)]);
   const thumb = new Blob([new Uint8Array(2_000)]);
@@ -93,7 +94,7 @@ Deno.test("uploadMediaByE2EE — with preview, preview upload uses small blob (#
   assertEquals(fake.e2eeCalls[1].keyMaterial, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
 });
 
-Deno.test("uploadMediaByE2EE — file type → no preview upload at all", async () => {
+test("uploadMediaByE2EE — file type → no preview upload at all", async () => {
   const { obs, fake } = makeObs();
   const doc = new Blob([new Uint8Array(50_000)]);
   await obs.uploadMediaByE2EE({

@@ -1,4 +1,5 @@
-import { assertEquals } from "@vyline/protocol/stack/assert";
+import { assertEquals, assertThrows } from "@vyline/protocol/stack/assert";
+import * as schema from "./schema.ts";
 import {
   CC_MSG,
   decodeCcConnReq,
@@ -8,6 +9,7 @@ import {
   decodeCcParticipateRsp,
   decodeCcRelReq,
   decodeCcSetupRsp,
+  decodeCcVerifyRsp,
   decodeFields,
   decodeMcDataReq,
   decodeMcDataRsp,
@@ -24,10 +26,14 @@ import {
   packCcRelReq,
   packCcSetupReq,
   packCcSetupRsp,
+  packCcVerifyReq,
+  packCcVerifyRsp,
   packKeepaliveReq,
   packMcDataReq,
   packMcDataRsp,
   packMcDataSessionPayload,
+  packMcStreamControl,
+  decodeMcStreamControl,
   packNativeGroupParticipateOffer,
   packNativeSetupOffer,
   packPlanetCcHdr,
@@ -44,6 +50,172 @@ import {
   wrapCcMsg,
   wrapMcMsg,
 } from "./schema.ts";
+
+Deno.test("group stream subscription uses explicit channel and native notification fields", () => {
+  const packed = schema.packMcStrmReq(9, [{ ssrc: 31, channel: 42, start: true }]);
+  const outer = decodeFields(packed);
+  assertEquals(outer.find((f) => f.tag === 2)?.value, 9n);
+  const fields = decodeFields(outer.find((f) => f.tag === 1)!.value as Uint8Array);
+  assertEquals(
+    fields.filter((f) => f.wireType === 0).map((f) => [f.tag, f.value]),
+    [
+      [1, 1n],
+      [3, 31n],
+      [5, 1n],
+      [6, 1n],
+      [7, 42n],
+    ],
+  );
+  assertEquals(
+    fields.some((f) => f.tag === 2),
+    false,
+  ); // Native omits uid in STRM_REQ.
+  assertEquals(
+    decodeFields(fields.find((f) => f.tag === 8)!.value as Uint8Array).map((f) => [f.tag, f.value]),
+    [
+      [1, 2n],
+      [2, 0n],
+    ],
+  );
+  assertThrows(() => schema.packMcStrmReq(1, [{ ssrc: -1, channel: 0, start: true }]));
+  assertThrows(() =>
+    schema.packMcStrmReq(1, [{ ssrc: 1, channel: undefined as unknown as number, start: true }]),
+  );
+  assertEquals(schema.decodeMcNotifyStrmReq(new Uint8Array([10, 6, 8, 1, 24, 31, 40, 42])), [
+    { state: 1, ssrc: 31, channel: 42, mid: undefined },
+  ]);
+  for (const body of [
+    [10, 4, 8, 1, 24, 31],
+    [10, 6, 8, 3, 24, 31, 40, 42],
+    [10, 8, 8, 1, 8, 2, 24, 31, 40, 42],
+  ])
+    assertThrows(() => schema.decodeMcNotifyStrmReq(new Uint8Array(body)));
+});
+
+Deno.test("group publisher decodes SVC layer requests without assuming an optional channel", () => {
+  const body = new Uint8Array([
+    10, 18, 8, 1, 24, 111, 40, 0, 48, 1, 66, 4, 8, 2, 16, 1, 74, 2, 65, 66, 16, 3,
+  ]);
+  const parsed = schema.decodeMcStrmReq(body);
+  assertEquals(parsed.sequence, 3);
+  assertEquals(parsed.requests, [
+    {
+      type: 1,
+      ssrc: 111,
+      startOperation: 0,
+      encoding: 1,
+      layers: [{ layer: 2, codec: 1 }],
+      mid: undefined,
+      channel: undefined,
+    },
+  ]);
+  assertThrows(() => schema.decodeMcStrmReq(new Uint8Array([10, 2, 8, 1])));
+  assertThrows(() => schema.decodeMcStrmReq(new Uint8Array([10, 6, 8, 1, 8, 0, 24, 111])));
+});
+
+Deno.test("conference/control protobuf rejects truncated and overflowing fields", () => {
+  for (const bytes of [[], [0x80], new Array(11).fill(0x80), [...new Array(9).fill(0xff), 2]]) {
+    assertThrows(() => decodeVarint(new Uint8Array(bytes), 0));
+  }
+  for (const bytes of [[0, 0], [0x0a, 2, 1], [0x0a, 0x80], [0x0d, 1, 2, 3], [0x09, 1], [0x08]]) {
+    assertThrows(() => decodeFields(new Uint8Array(bytes)));
+  }
+  assertEquals(decodeVarint(new Uint8Array([...new Array(9).fill(0xff), 1]), 0), [
+    (1n << 64n) - 1n,
+    10,
+  ]);
+  assertThrows(() => decodeFields(Uint8Array.from({ length: 8194 }, (_, i) => (i % 2 ? 0 : 8))));
+});
+
+Deno.test("VP8 normal-video offer preserves audio and marks initial video separately", () => {
+  const material = {
+    mediaPubKey: new Uint8Array(33),
+    mediaKeyId: 1,
+    mediaNonce: new Uint8Array(16),
+    mediaSecret: new Uint8Array(30),
+  };
+  for (const enabled of [false, true]) {
+    const offer = decodeNativeSetupOffer(packNativeSetupOffer(material, "simple", { enabled }));
+    assertEquals(
+      offer.media.map((m) => [m.name, m.enabled, m.kinds]),
+      [
+        ["A", 1, [1]],
+        ["V", Number(enabled), [2]],
+        ["D", 1, [6]],
+      ],
+    );
+    assertEquals(offer.media.find((m) => m.name === "V")?.rtpPort, 111);
+    assertEquals(offer.mediaPubKey, undefined);
+  }
+});
+
+Deno.test("MCMMD video START uses native big-endian control layout and rejects truncation", () => {
+  const data = packMcStreamControl({ operation: 1, ssrcs: [111, 211], mediaKind: 2, code: 0 });
+  assertEquals(
+    data,
+    new Uint8Array([
+      0, 1, 0, 0, 0, 20, 0, 0, 0, 1, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 111, 0, 0, 0, 211,
+    ]),
+  );
+  assertEquals(decodeMcStreamControl(data), {
+    operation: 1,
+    ssrcs: [111, 211],
+    mediaKind: 2,
+    code: 0,
+  });
+  assertEquals(decodeMcStreamControl(packMcDataSessionPayload(new Uint8Array([1]))), undefined);
+  for (let i = 0; i < data.length; i++) assertThrows(() => decodeMcStreamControl(data.slice(0, i)));
+  const badCount = data.slice();
+  badCount[11] = 3;
+  assertThrows(() => decodeMcStreamControl(badCount));
+});
+
+Deno.test("MCMMD ignores optional sender overruns like native without weakening control bounds", () => {
+  const packet = new Uint8Array([
+    0,
+    1,
+    0,
+    0,
+    0,
+    22,
+    0,
+    0, // 22-byte body, padded to 24 bytes.
+    0,
+    1,
+    0,
+    1,
+    0,
+    0,
+    0,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0x11,
+    0x11,
+    0x11,
+    0x11,
+    0,
+    6,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0, // Sender claims 6, only 4 logical bytes remain.
+  ]);
+  assertEquals(decodeMcStreamControl(packet), {
+    operation: 1,
+    mediaKind: 2,
+    code: 0,
+    ssrcs: [0x11111111],
+  });
+  const truncated = packet.slice();
+  truncated[11] = 3;
+  assertThrows(() => decodeMcStreamControl(truncated));
+  assertThrows(() => decodeMcStreamControl(packet.subarray(0, 30)));
+});
 
 Deno.test("packPlanetMsgHdr matches an observed 96-byte header shape", () => {
   // Reproduce an observed msg_pack header shape without account-specific
@@ -274,6 +446,10 @@ Deno.test("packNativeGroupParticipateOffer emits group media records", () => {
     [203, 213, 223],
   );
   assertEquals(decoded.mediaSecret, new Uint8Array(30).fill(7));
+  assertEquals(decoded.media.find((m) => m.name === "V")?.features, [
+    { id: 0, version: 2 },
+    { id: 2, version: 1 },
+  ]);
   assertEquals(decoded.mediaPubKey, undefined);
   assertEquals(decoded.version, { major: 0, mode: 3 });
 });
@@ -698,6 +874,66 @@ Deno.test("packCcConnReq/packCcConnRsp round-trip answered-call media fields", (
   assertEquals(decodedRsp.netType, 1);
   assertEquals(decodedRsp.unavailToSec, 120);
   assertEquals(decodedRsp.ua, ua);
+});
+
+Deno.test("cc_verify_req/rsp use native Android field tags", () => {
+  const ua = packPlanetUserAgent({ osName: "Android", osVersion: "36", deviceName: "Pixel" });
+  const credential = new Uint8Array([1, 2, 3, 4]);
+  const req = packCcVerifyReq({
+    initiator: "u-caller",
+    responder: "u-local",
+    iZone: "JP",
+    rZone: "JP",
+    ua,
+    devId: "device",
+    commTypeFlags: 1,
+    capas: [1, 2, 7],
+    credential,
+    svcKey: "freecall.audio",
+    crt: false,
+    netType: 1,
+    stid: "stid",
+    svcId: "svc",
+    tgtSvcId: "target",
+    pathCheck: false,
+    interDomain: false,
+  });
+  assertEquals(
+    decodeFields(req).map((field) => field.tag),
+    [1, 2, 3, 4, 5, 6, 7, 8, 8, 8, 9, 10, 11, 12, 21, 51, 52, 105, 153],
+  );
+
+  const offer = new Uint8Array([9, 8, 7]);
+  const feature = new Uint8Array([0x08, 0x01]);
+  const rsp = packCcVerifyRsp({
+    result: 0,
+    relCode: 0,
+    relPhrase: "OK",
+    cfgs: "{}",
+    oCapas: [1, 7],
+    offer,
+    releaser: "",
+    compCfgs: new Uint8Array([5]),
+    compCfgsType: 1,
+    oUeData: new Uint8Array([6]),
+    oUeDataCompType: 2,
+    oFeatures: [feature],
+    iCountry: "JP",
+    iDevId: "peer-device",
+    aliveRptInterval: 30,
+    stops: "",
+    pt: false,
+    maxCallTimeSec: 3600,
+  });
+  const decoded = decodeCcVerifyRsp(rsp);
+  assertEquals(decoded.result, 0);
+  assertEquals(decoded.offer, offer);
+  assertEquals(decoded.oCapas, [1, 7]);
+  assertEquals(decoded.oFeatures, [feature]);
+  assertEquals(decoded.iCountry, "JP");
+  assertEquals(decoded.iDevId, "peer-device");
+  assertEquals(decoded.aliveRptInterval, 30);
+  assertEquals(decoded.maxCallTimeSec, 3600);
 });
 
 Deno.test("packCcInfoReq/packCcInfoRsp round-trip info exchange fields", () => {

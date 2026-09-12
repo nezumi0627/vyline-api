@@ -19,6 +19,10 @@ export class TalkDomain {
     await this.client.base.talk.unsendMessage({ messageId });
   }
 
+  async unsendSilently(messageId: string) {
+    return await this.client.base.talk.silentlyUnsendMessage({ messageId });
+  }
+
   async markRead(chatMid: string, lastMessageId: string) {
     await this.client.base.talk.sendChatChecked({
       seq: 0,

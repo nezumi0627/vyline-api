@@ -14,6 +14,11 @@ export class ContactsDomain {
     return this.client.getUser(mid);
   }
 
+  async listFriendMids() {
+    const result = await this.client.base.relation.getUserFriendIds({ request: { blockStatus: "ALL" } });
+    return result.userFriendMids ?? [];
+  }
+
   async listFriends() {
     return this.client.fetchUsers();
   }

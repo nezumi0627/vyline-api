@@ -5,11 +5,33 @@ import {
   decodeWavSync,
   defaultCodecFactory,
   packetizeNativeGroupOpusPairs,
+  pcmAudioLevel,
+  AudioActivityDetector,
   type PcmFrame,
   resampleLinear,
   streamSink,
   streamSource,
 } from "./audio.ts";
+
+Deno.test("PCM audio level measures actual energy and represents digital silence as 127", () => {
+  assertEquals(pcmAudioLevel(new Int16Array(0)), 127);
+  assertEquals(pcmAudioLevel(new Int16Array(960)), 127);
+  assertEquals(pcmAudioLevel(new Int16Array([32767, -32768])), 0);
+  assertEquals(pcmAudioLevel(new Int16Array([16384, -16384])), 6);
+  assertEquals(pcmAudioLevel(new Int16Array([1, -1])), 90);
+  assertEquals(pcmAudioLevel(new Int16Array(960).fill(1000)), 127);
+});
+
+Deno.test("Audio activity preserves quiet tails but never marks digital mute as active", () => {
+  const detector = new AudioActivityDetector();
+  assertEquals(detector.signal(70, 0), 1);
+  assertEquals(detector.signal(40, 20), 2);
+  assertEquals(detector.signal(70, 100), 2);
+  assertEquals(detector.signal(70, 250), 1);
+  assertEquals(detector.signal(60, 300), 2);
+  assertEquals(detector.signal(127, 310), 0);
+  assertEquals(detector.signal(70, 320), 1);
+});
 
 Deno.test("bufferSource chunks 1s @ 16kHz mono into 20ms frames", async () => {
   const samples = new Int16Array(16000); // 1 second
@@ -111,8 +133,8 @@ Deno.test("packetizeNativeGroupOpusPairs combines prefixed 20ms Opus frames", ()
   const grouped = packetizeNativeGroupOpusPairs(packets);
 
   assertEquals(grouped.length, 3);
-  assertEquals(Array.from(grouped[0]), [0x00, 0x7b, 0x02, 0x11, 0x12, 0x21, 0x22]);
-  assertEquals(Array.from(grouped[1]), [0x00, 0x7b, 0x02, 0x31, 0x41]);
+  assertEquals(Array.from(grouped[0]), [0x10, 0x7b, 0x02, 0x11, 0x12, 0x21, 0x22]);
+  assertEquals(Array.from(grouped[1]), [0x10, 0x7b, 0x02, 0x31, 0x41]);
   assertEquals(Array.from(grouped[2]), [0x10, 0x7b, 0x02, 0x51, 0x61]);
 });
 
@@ -122,7 +144,15 @@ Deno.test("packetizeNativeGroupOpusPairs writes VBR frame-size headers", () => {
     new Uint8Array([0x00, 0x78, 0x21]),
   ]);
 
-  assertEquals(Array.from(grouped[0]), [0x00, 0x7b, 0x82, 0x03, 0x11, 0x12, 0x13, 0x21]);
+  assertEquals(Array.from(grouped[0]), [0x10, 0x7b, 0x82, 0x03, 0x11, 0x12, 0x13, 0x21]);
+});
+
+Deno.test("legacy group pair helper preserves mixed configs and CELT speech flags", () => {
+  const frames = [new Uint8Array([0, 0x78, 0x11]), new Uint8Array([0, 0xf8, 0x21])];
+  assertEquals(
+    packetizeNativeGroupOpusPairs(frames)[0],
+    new Uint8Array([0x10, 0x7a, 0xfb, 2, 0x80, 0x11, 0x21]),
+  );
 });
 
 Deno.test("resampleLinear: identity when rates match", () => {

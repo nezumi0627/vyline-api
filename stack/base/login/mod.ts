@@ -28,7 +28,7 @@ interface LoginVer {
   loginZ: LINETypes.LoginResult;
 }
 
-const random6DigitPin = (): string => String(randomInt(100000, 1000000));
+export const random6DigitPin = (): string => String(randomInt(100000, 1000000));
 
 export interface PasswordLoginOption {
   /**
@@ -367,10 +367,7 @@ export class Login {
 
     this.client.log("login", {
       method: "email_v1",
-      email,
-      password: password.length,
       enableE2EE,
-      constantPincode,
     });
 
     const rsaKey = await this.getRSAKeyInfo();
@@ -427,7 +424,10 @@ export class Login {
             })
             .then((res) => res.json())
         ).result;
-        this.client.log("response", e2eeInfo);
+        this.client.log("response", {
+          method: "email_e2ee_info",
+          received: Boolean(e2eeInfo?.metadata),
+        });
         await this.client.e2ee.decodeE2EEKeyV1(e2eeInfo.metadata, Buffer.from(secret));
         const deviceSecret = this.client.e2ee.encryptDeviceSecret(
           Buffer.from(e2eeInfo.metadata.publicKey, "base64"),
@@ -460,7 +460,10 @@ export class Login {
             headers: headers,
           })
           .then((res) => res.json());
-        this.client.log("response", verifier);
+        this.client.log("response", {
+          method: "email_verifier",
+          verified: Boolean(verifier?.result?.verifier),
+        });
         response = await this.loginV2(
           keynm,
           encryptedMessage,
@@ -493,9 +496,6 @@ export class Login {
 
     this.client.log("login", {
       method: "email",
-      email,
-      password: password.length,
-      constantPincode,
     });
 
     const rsaKey = await this.getRSAKeyInfo();
@@ -548,7 +548,10 @@ export class Login {
           })
           .then((res) => res.json())
       ).result;
-      this.client.log("response", e2eeInfo);
+      this.client.log("response", {
+        method: "email_e2ee_info",
+        received: Boolean(e2eeInfo?.metadata),
+      });
       await this.client.e2ee.decodeE2EEKeyV1(e2eeInfo.metadata, Buffer.from(secret));
       const deviceSecret = this.client.e2ee.encryptDeviceSecret(
         Buffer.from(e2eeInfo.metadata.publicKey, "base64"),

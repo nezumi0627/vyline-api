@@ -14,20 +14,28 @@ import { buildCallWireContext, describeRouteTransport } from "./context.js";
 import type { Client } from "@vyline/protocol/stack";
 import type { DesktopProfile } from "../desktop/types.js";
 
-export function describeCallRoute(route: LINETypes.CallRoute): "planet" | "andromeda" {
+export function describeCallRoute(
+  route: LINETypes.CallRoute | LINETypes.GroupCallRoute,
+): "planet" | "andromeda" {
   return describeRouteTransport(route);
 }
 
-export function pickCallTransport(route: LINETypes.CallRoute, ctx: CallWireContext): CallTransport {
+export function pickCallTransport(
+  route: LINETypes.CallRoute | LINETypes.GroupCallRoute,
+  ctx: CallWireContext,
+  transportOpts?: { callId?: string; debug?: (event: Record<string, unknown>) => void },
+): CallTransport {
   if (ctx.transportKind === "planet") {
-    const opts: ConstructorParameters<typeof PlanetTransport>[0] = {
+    const planetOpts: ConstructorParameters<typeof PlanetTransport>[0] = {
       localMid: ctx.localMid,
       userAgent: ctx.planetUserAgent,
+      ...(transportOpts?.callId ? { callId: transportOpts.callId } : {}),
+      ...(transportOpts?.debug ? { debug: transportOpts.debug } : {}),
     };
     if (ctx.planetUserAgent.appReleaseInfo) {
-      opts.deviceInfo = ctx.planetUserAgent.appReleaseInfo;
+      planetOpts.deviceInfo = ctx.planetUserAgent.appReleaseInfo;
     }
-    return new PlanetTransport(opts);
+    return new PlanetTransport(planetOpts);
   }
   return new AndromedaTransport({
     localMid: ctx.localMid,
@@ -38,9 +46,24 @@ export function pickCallTransport(route: LINETypes.CallRoute, ctx: CallWireConte
 /** client + route から wire コンテキスト付き transport */
 export function pickCallTransportForClient(
   client: Client,
-  route: LINETypes.CallRoute,
-  opts?: { desktopProfile?: DesktopProfile | null; deviceMode?: string },
+  route: LINETypes.CallRoute | LINETypes.GroupCallRoute,
+  opts?: {
+    desktopProfile?: DesktopProfile | null;
+    deviceMode?: string;
+    callId?: string;
+    debug?: (event: Record<string, unknown>) => void;
+  },
 ): { transport: CallTransport; ctx: CallWireContext } {
   const ctx = buildCallWireContext(client, route, opts);
-  return { transport: pickCallTransport(route, ctx), ctx };
+  const transportOpts =
+    opts?.callId || opts?.debug
+      ? {
+          ...(opts.callId ? { callId: opts.callId } : {}),
+          ...(opts.debug ? { debug: opts.debug } : {}),
+        }
+      : undefined;
+  return {
+    transport: pickCallTransport(route, ctx, transportOpts),
+    ctx,
+  };
 }

@@ -45,6 +45,7 @@ export declare class LiffService implements BaseService {
             type: string;
             text?: string;
         }[];
+        liffId?: string;
         tryConsent?: boolean;
         forceIssue?: boolean;
     }): Promise<LooseType>;

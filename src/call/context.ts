@@ -135,7 +135,9 @@ export function buildSipUserAgent(
   return `Line/${details.appVersion}`;
 }
 
-export function describeRouteTransport(route: LINETypes.CallRoute): "planet" | "andromeda" {
+export function describeRouteTransport(
+  route: Pick<LINETypes.CallRoute, "commParam">,
+): "planet" | "andromeda" {
   try {
     const comm = JSON.parse(route.commParam || "{}") as { mpkey?: string };
     return comm.mpkey ? "planet" : "andromeda";
@@ -146,7 +148,7 @@ export function describeRouteTransport(route: LINETypes.CallRoute): "planet" | "
 
 export function buildCallWireContext(
   client: Client,
-  route: LINETypes.CallRoute,
+  route: Pick<LINETypes.CallRoute, "commParam">,
   opts?: { desktopProfile?: DesktopProfile | null; deviceMode?: VylineDeviceMode | string },
 ): CallWireContext {
   const deviceMode = resolveDeviceMode(opts?.deviceMode);

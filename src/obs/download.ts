@@ -21,11 +21,11 @@ export function obsMessageDataUrl(
   }`;
 }
 
-export async function downloadObsMessageBytes(
+export async function downloadObsMessageResponse(
   deps: ObsDownloadDeps,
   messageId: string,
-  opts: { preview?: boolean; square?: boolean; fallbackMime?: string } = {},
-): Promise<{ bytes: Uint8Array; contentType: string }> {
+  opts: { preview?: boolean; square?: boolean; signal?: AbortSignal } = {},
+): Promise<Response> {
   const preview = opts.preview ?? false;
   const square = opts.square ?? false;
   const url = obsMessageDataUrl(messageId, preview, square, deps.prefix);
@@ -35,10 +35,19 @@ export async function downloadObsMessageBytes(
       "x-line-application": deps.systemType,
       "x-Line-access": deps.authToken,
     },
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
-  if (!res.ok) {
-    throw new Error(`OBS download failed: HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(`OBS download failed: HTTP ${res.status}`);
+  if (!res.body) throw new Error("OBS download returned empty body");
+  return res;
+}
+
+export async function downloadObsMessageBytes(
+  deps: ObsDownloadDeps,
+  messageId: string,
+  opts: { preview?: boolean; square?: boolean; fallbackMime?: string } = {},
+): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const res = await downloadObsMessageResponse(deps, messageId, opts);
   const blob = await res.blob();
   if (!blob || blob.size === 0) {
     throw new Error("OBS download returned empty body");

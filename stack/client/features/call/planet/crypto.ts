@@ -109,8 +109,14 @@ export interface EphemeralKeypair {
 export function generateEphemeralKeypair(): EphemeralKeypair {
   const ec = createECDH("prime256v1");
   ec.generateKeys();
+  const rawPriv = new Uint8Array(ec.getPrivateKey());
+  let privateKey = rawPriv;
+  if (rawPriv.length < 32) {
+    privateKey = new Uint8Array(32);
+    privateKey.set(rawPriv, 32 - rawPriv.length);
+  }
   return {
-    privateKey: new Uint8Array(ec.getPrivateKey()),
+    privateKey,
     publicKey: new Uint8Array(ec.getPublicKey(undefined, "compressed")),
   };
 }
