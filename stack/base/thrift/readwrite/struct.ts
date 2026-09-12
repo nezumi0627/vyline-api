@@ -1167,11 +1167,18 @@ export function MessageReactionType(
 ): (LINETypes.MessageReactionType & number) | undefined {
   return typeof param === "string" ? LINETypes.enums.MessageReactionType[param] : param;
 }
-export function ReactionType(param?: PartialDeep<LINETypes.ReactionType> | undefined): NestedArray {
-  return typeof param === "undefined"
-    ? []
-    : [[8, 1, MessageReactionType(param.predefinedReactionType)]];
+// Android 26.13.0 rg8/jf.java + rg8/ke.java: paidReactionType is field 2.
+export function PaidReactionType(param?: PartialDeep<LINETypes.PaidReactionType>): NestedArray {
+  return param ? [[11, 1, param.productId], [11, 2, param.emojiId], [8, 3, param.resourceType], [10, 4, param.version]] : [];
 }
+export function ReactionType(param?: PartialDeep<LINETypes.ReactionType>): NestedArray {
+  if (!param) return [];
+  const fields: NestedArray = [];
+  if (param.predefinedReactionType != null) fields.push([8, 1, MessageReactionType(param.predefinedReactionType)]);
+  if (param.paidReactionType) fields.push([12, 2, PaidReactionType(param.paidReactionType)]);
+  return fields;
+}
+
 export function Reaction(param?: PartialDeep<LINETypes.Reaction> | undefined): NestedArray {
   return typeof param === "undefined"
     ? []
@@ -3911,6 +3918,16 @@ export function Pb1_EnumC13221w3(
   param: LINETypes.Pb1_EnumC13221w3 | undefined,
 ): (LINETypes.Pb1_EnumC13221w3 & number) | undefined {
   return typeof param === "string" ? LINETypes.enums.Pb1_EnumC13221w3[param] : param;
+}
+export function SilentlyUnsendMessageRequest(
+  param?: PartialDeep<LINETypes.SilentlyUnsendMessageRequest> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [
+        [8, 1, param.reqSeq],
+        [11, 2, param.messageId],
+      ];
 }
 export function SimCard(param?: PartialDeep<LINETypes.SimCard> | undefined): NestedArray {
   return typeof param === "undefined"
@@ -9056,6 +9073,13 @@ export function setPassword_args(
   param?: PartialDeep<LINETypes.setPassword_args> | undefined,
 ): NestedArray {
   return typeof param === "undefined" ? [] : [[12, 1, SetPasswordRequest(param.request)]];
+}
+export function silentlyUnsendMessage_args(
+  param?: PartialDeep<LINETypes.silentlyUnsendMessage_args> | undefined,
+): NestedArray {
+  return typeof param === "undefined"
+    ? []
+    : [[12, 1, SilentlyUnsendMessageRequest(param.silentlyUnsendMessageRequest)]];
 }
 export function shouldShowWelcomeStickerBanner_args(
   param?: PartialDeep<LINETypes.shouldShowWelcomeStickerBanner_args> | undefined,

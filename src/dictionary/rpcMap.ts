@@ -113,6 +113,17 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     category: "talk",
   },
   {
+    canonicalName: "silentlyUnsendMessage",
+    desktopEvidence: [],
+    path: "/S4",
+    stackApi: "base.talk.silentlyUnsendMessage",
+    domainApi: "session.talk.unsendSilently",
+    backendApi: "silentlyUnsendMessage",
+    category: "talk",
+    notes:
+      "Android 26.13.0 JADX: SilentlyUnsendMessageRequest/Response。Desktop 由来の証拠ではない",
+  },
+  {
     canonicalName: "getPreviousMessagesV2WithRequest",
     desktopEvidence: ["TalkService_getPreviousMessagesV2WithRequest_pargs"],
     path: "/S4",
@@ -231,6 +242,39 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     stackApi: "base.talk.createChat",
     backendApi: "createGroupChat",
     category: "chat-admin",
+  },
+  {
+    canonicalName: "getUserFriendIds",
+    desktopEvidence: ["RelationService_getUserFriendIds"],
+    path: "/RE4",
+    stackApi: "base.relation.getUserFriendIds",
+    domainApi: "session.contacts.listFriendMids",
+    backendApi: "getGroupInviteReject",
+    category: "contacts",
+    notes:
+      "Verified in tools/data/unpacked_LINE.exe at byte 52031440; blockStatus ALL includes all friend MIDs before profile resolution.",
+  },
+  {
+    canonicalName: "cancelChatInvitation",
+    desktopEvidence: ["TalkService_cancelChatInvitation"],
+    path: "/S4",
+    stackApi: "base.talk.cancelChatInvitation",
+    domainApi: "session.chat.cancelInvitations",
+    backendApi: "saveGroupInviteReject",
+    category: "chat-admin",
+    notes:
+      "Verified in tools/data/unpacked_LINE.exe at byte 51847288; Android RxMainChatDataModule.cancelGroupInvitation.",
+  },
+  {
+    canonicalName: "deleteOtherFromChat",
+    desktopEvidence: ["TalkService_deleteOtherFromChat"],
+    path: "/S4",
+    stackApi: "base.talk.deleteOtherFromChat",
+    domainApi: "session.chat.kick",
+    backendApi: "saveGroupInviteReject",
+    category: "chat-admin",
+    notes:
+      "Verified in tools/data/unpacked_LINE.exe at byte 51847248; Android RxMainChatDataModule.kickOutFromGroup.",
   },
   {
     canonicalName: "inviteIntoChat",

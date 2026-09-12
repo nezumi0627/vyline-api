@@ -4,6 +4,16 @@ export interface PcmFrame {
     channels: number;
     timestamp?: number;
 }
+/** Per-frame AC energy in -dBov units (RFC 6464); DC is not audio activity. */
+export declare function pcmAudioLevel(samples: Int16Array): number;
+/** Activity includes music, not just human speech (native VSD VOICED=2).
+ * ponytail: OpusScript lacks native analysis getters; use a -60dBov energy
+ * gate with 200ms quiet-tail hold. Replace with codec VAD if noise is forwarded.
+ */
+export declare class AudioActivityDetector {
+    #private;
+    signal(level: number, now?: number): 0 | 1 | 2;
+}
 export interface AudioSource {
     frames(opts?: {
         signal?: AbortSignal;
@@ -17,7 +27,7 @@ export interface AudioSink {
 export interface NativeGroupOpusPacketizeOptions {
     /**
      * Number of bytes before the raw Opus TOC byte in each input packet.
-     * PLANET 1:1 examples usually pass packets shaped as `00 + opus`.
+     * Legacy helper input is shaped as `prefix + raw Opus`, not received EAS2.
      */
     inputPrefixBytes?: number;
 }

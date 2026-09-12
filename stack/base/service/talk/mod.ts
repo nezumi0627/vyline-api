@@ -373,6 +373,24 @@ export class TalkService implements BaseService {
     );
   }
 
+  async silentlyUnsendMessage(options: {
+    messageId: string;
+    reqSeq?: number;
+  }): Promise<LINETypes.SilentlyUnsendMessageResponse> {
+    return await this.client.request.request(
+      LINEStruct.silentlyUnsendMessage_args({
+        silentlyUnsendMessageRequest: {
+          reqSeq: options.reqSeq ?? (await this.client.getReqseq()),
+          messageId: options.messageId,
+        },
+      }),
+      "silentlyUnsendMessage",
+      this.protocolType,
+      true,
+      "/S4",
+    );
+  }
+
   async deleteOtherFromChat(
     ...param: Parameters<typeof LINEStruct.deleteOtherFromChat_args>
   ): Promise<LINETypes.deleteOtherFromChat_result["success"]> {
@@ -838,16 +856,16 @@ export class TalkService implements BaseService {
 
   async react(options: {
     id: bigint | number;
-    reaction: LINETypes.MessageReactionType;
+    reaction: LINETypes.MessageReactionType | LINETypes.PaidReactionType;
   }): Promise<void> {
     return await this.client.request.request(
       LINEStruct.react_args({
         reactRequest: {
           reqSeq: 0,
           messageId: options.id,
-          reactionType: {
-            predefinedReactionType: options.reaction,
-          },
+          reactionType: typeof options.reaction === "object"
+            ? { paidReactionType: options.reaction }
+            : { predefinedReactionType: options.reaction },
         },
       }),
       "react",

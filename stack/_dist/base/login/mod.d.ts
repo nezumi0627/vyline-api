@@ -10,6 +10,7 @@ export type LoginOption = PasswordLoginOption | QrCodeLoginOption | {
     qr?: undefined;
 };
 export declare function registrationAuthEndpoint(device: Device): "/api/v3p/rs" | "/api/v4p/rs";
+export declare const random6DigitPin: () => string;
 export interface PasswordLoginOption {
     /**
      * account e-mail address

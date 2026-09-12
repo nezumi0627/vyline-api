@@ -1,7 +1,8 @@
 import { assertEquals } from "../../../assert.ts";
+import { test } from "bun:test";
+import type { BaseClient } from "../../core/mod.js";
 import { MemoryStorage } from "../../storage/memory.ts";
 import { AuthService } from "./mod.ts";
-import type { BaseClient } from "../../core/mod.ts";
 
 function createService(refreshResult: Record<string, unknown>) {
   const storage = new MemoryStorage();
@@ -22,7 +23,7 @@ function createService(refreshResult: Record<string, unknown>) {
   return { service, storage, client, emitted, getRefreshCalls: () => refreshCalls };
 }
 
-Deno.test("tryRefreshToken persists rotated refresh token and expiry", async () => {
+test("tryRefreshToken persists rotated refresh token and expiry", async () => {
   const { service, storage, client, emitted } = createService({
     accessToken: "new-access",
     refreshToken: "new-refresh",
@@ -39,7 +40,7 @@ Deno.test("tryRefreshToken persists rotated refresh token and expiry", async () 
   assertEquals(emitted, [["update:authtoken", "new-access"]]);
 });
 
-Deno.test("tryRefreshToken keeps existing refresh token when server does not rotate it", async () => {
+test("tryRefreshToken keeps the current refresh token when it is not rotated", async () => {
   const { service, storage } = createService({
     accessToken: "new-access",
     tokenIssueTimeEpochSec: 2_000,
@@ -53,7 +54,7 @@ Deno.test("tryRefreshToken keeps existing refresh token when server does not rot
   assertEquals(await storage.get("expire"), 3_800);
 });
 
-Deno.test("tryRefreshToken deduplicates concurrent refresh attempts", async () => {
+test("tryRefreshToken deduplicates concurrent refresh attempts", async () => {
   const { service, storage, getRefreshCalls } = createService({
     accessToken: "new-access",
     refreshToken: "rotated-refresh",
@@ -62,7 +63,11 @@ Deno.test("tryRefreshToken deduplicates concurrent refresh attempts", async () =
   });
   await storage.set("refreshToken", "existing-refresh");
 
-  await Promise.all([service.tryRefreshToken(), service.tryRefreshToken(), service.tryRefreshToken()]);
+  await Promise.all([
+    service.tryRefreshToken(),
+    service.tryRefreshToken(),
+    service.tryRefreshToken(),
+  ]);
 
   assertEquals(getRefreshCalls(), 1);
 });

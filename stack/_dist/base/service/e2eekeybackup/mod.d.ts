@@ -11,4 +11,5 @@ export declare class E2EEKeyBackupService implements BaseService {
     constructor(client: BaseClient);
     getE2EEKeyBackupCertificates(...param: Parameters<typeof LINEStruct.getE2EEKeyBackupCertificates_args>): Promise<LINETypes.getE2EEKeyBackupCertificates_result["success"]>;
     getE2EEKeyBackupInfo(...param: Parameters<typeof LINEStruct.getE2EEKeyBackupInfo_args>): Promise<LINETypes.getE2EEKeyBackupInfo_result["success"]>;
+    restoreE2EEKeyBackup(...param: Parameters<typeof LINEStruct.restoreE2EEKeyBackup_args>): Promise<LINETypes.restoreE2EEKeyBackup_result["success"]>;
 }

@@ -56,9 +56,16 @@ export class ChatDomain {
     return chat.invite(mids);
   }
 
+  async cancelInvitations(chatMid: string, mids: string[]) {
+    return this.client.base.talk.cancelChatInvitation({
+      request: { reqSeq: await this.client.base.getReqseq(), chatMid, targetUserMids: mids },
+    });
+  }
+
   async kick(chatMid: string, mid: string) {
-    const chat = await this.client.getChat(chatMid);
-    return chat.kick(mid);
+    return this.client.base.talk.deleteOtherFromChat({
+      request: { reqSeq: await this.client.base.getReqseq(), chatMid, targetUserMids: [mid] },
+    });
   }
 
   async leave(chatMid: string) {

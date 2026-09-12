@@ -1,10 +1,42 @@
 // Audio pipeline — PCM in/out, Opus codec hook.
+import { packetizeEas2Frames } from "./planet/eas2.js";
 
 export interface PcmFrame {
   samples: Int16Array;
   sampleRate: number;
   channels: number;
   timestamp?: number;
+}
+
+/** Per-frame AC energy in -dBov units (RFC 6464); DC is not audio activity. */
+export function pcmAudioLevel(samples: Int16Array): number {
+  if (!samples.length) return 127;
+  let energy = 0;
+  let sum = 0;
+  for (const sample of samples) {
+    energy += sample * sample;
+    sum += sample;
+  }
+  energy = Math.max(0, energy / samples.length - (sum / samples.length) ** 2);
+  return energy === 0
+    ? 127
+    : Math.min(127, Math.max(0, Math.round(-10 * Math.log10(energy / (32768 * 32768)))));
+}
+
+/** Activity includes music, not just human speech (native VSD VOICED=2).
+ * ponytail: OpusScript lacks native analysis getters; use a -60dBov energy
+ * gate with 200ms quiet-tail hold. Replace with codec VAD if noise is forwarded.
+ */
+export class AudioActivityDetector {
+  #activeUntil = 0;
+  signal(level: number, now = performance.now()): 0 | 1 | 2 {
+    if (level === 127) {
+      this.#activeUntil = 0;
+      return 0;
+    }
+    if (level <= 60) this.#activeUntil = now + 200;
+    return now < this.#activeUntil ? 2 : 1;
+  }
 }
 
 export interface AudioSource {
@@ -20,7 +52,7 @@ export interface AudioSink {
 export interface NativeGroupOpusPacketizeOptions {
   /**
    * Number of bytes before the raw Opus TOC byte in each input packet.
-   * PLANET 1:1 examples usually pass packets shaped as `00 + opus`.
+   * Legacy helper input is shaped as `prefix + raw Opus`, not received EAS2.
    */
   inputPrefixBytes?: number;
 }
@@ -72,7 +104,9 @@ export function bufferSource(opts: {
 }
 
 export interface FileDecoder {
-  (bytes: Uint8Array): Promise<{
+  (
+    bytes: Uint8Array,
+  ): Promise<{
     samples: Int16Array;
     sampleRate: number;
     channels: number;
@@ -128,30 +162,11 @@ export function packetizeNativeGroupOpusPairs(
   for (let i = 0; i + 1 < packets.length; i += 2) {
     const left = packets[i];
     const right = packets[i + 1];
-    if (left.length <= inputPrefixBytes || right.length <= inputPrefixBytes) continue;
-    const nativePrefix = out.length < 2 ? 0x00 : 0x10;
-    const toc = (left[inputPrefixBytes] & 0xfc) | 0x03;
-    const leftFrame = left.subarray(inputPrefixBytes + 1);
-    const rightFrame = right.subarray(inputPrefixBytes + 1);
-    const header =
-      leftFrame.length === rightFrame.length
-        ? new Uint8Array([nativePrefix, toc, 0x02])
-        : new Uint8Array([nativePrefix, toc, 0x82, ...opusFrameSizeBytes(leftFrame.length)]);
-    const packet = new Uint8Array(header.length + leftFrame.length + rightFrame.length);
-    packet.set(header, 0);
-    packet.set(leftFrame, header.length);
-    packet.set(rightFrame, header.length + leftFrame.length);
-    out.push(packet);
+    out.push(
+      packetizeEas2Frames([left.subarray(inputPrefixBytes), right.subarray(inputPrefixBytes)]),
+    );
   }
   return out;
-}
-
-function opusFrameSizeBytes(size: number): number[] {
-  if (size < 0 || !Number.isInteger(size)) {
-    throw new Error("packetizeNativeGroupOpusPairs: invalid Opus frame size");
-  }
-  if (size < 252) return [size];
-  return [252 + (size & 0x03), size >>> 2];
 }
 
 export interface AudioEncoder {

@@ -19,7 +19,7 @@
  *         cc_rel_req        …
  *         (and so on)
  */
-export declare const enum WireType {
+export declare enum WireType {
     Varint = 0,
     Fixed64 = 1,
     LengthDelim = 2,
@@ -73,7 +73,9 @@ export interface PlanetSetupOfferMaterial {
  * blobs. Dynamic cryptographic material is supplied by the caller so tests can
  * be deterministic.
  */
-export declare function packNativeSetupOffer(material: PlanetSetupOfferMaterial): Uint8Array;
+export declare function packNativeSetupOffer(material: PlanetSetupOfferMaterial, selectedCrypto?: "e2ee" | "simple", videoState?: {
+    enabled: boolean;
+}): Uint8Array;
 export interface PlanetGroupParticipateOfferMaterial {
     /** 30-byte random secret/blob used by the group media key offer. */
     mediaSecret: Uint8Array;
@@ -83,7 +85,7 @@ export interface PlanetGroupParticipateOfferMaterial {
  * shared media secret. Unlike 1:1 SETUP, the captured group offer does not
  * include a per-offer media public key/key-id/nonce block.
  */
-export declare function packNativeGroupParticipateOffer(material: PlanetGroupParticipateOfferMaterial): Uint8Array;
+export declare function packNativeGroupParticipateOffer(material: PlanetGroupParticipateOfferMaterial, initialVideo?: boolean): Uint8Array;
 export declare const CC_MSG: {
     readonly SETUP_REQ: 1;
     readonly SETUP_RSP: 2;
@@ -185,6 +187,28 @@ export interface CcSetupReq {
     appSvrData?: string;
 }
 export declare function packCcSetupReq(r: CcSetupReq): Uint8Array;
+export interface CcVerifyReq {
+    initiator: string;
+    responder: string;
+    iZone?: string;
+    rZone?: string;
+    ua?: Uint8Array;
+    devId?: string;
+    commTypeFlags?: number;
+    capas?: number[];
+    credential?: Uint8Array;
+    svcKey?: string;
+    crt?: boolean;
+    netType?: number;
+    stid?: string;
+    svcId?: string;
+    tgtSvcId?: string;
+    uePublicAddr?: Uint8Array;
+    rVisitedZone?: string;
+    pathCheck?: boolean;
+    interDomain?: boolean;
+}
+export declare function packCcVerifyReq(r: CcVerifyReq): Uint8Array;
 export interface CcParticipateReq {
     participant: string;
     roomId: string;
@@ -241,6 +265,11 @@ export interface CcRelReq {
 }
 export declare function packCcRelReq(r: CcRelReq): Uint8Array;
 export declare function decodeCcRelReq(bytes: Uint8Array): CcRelReq;
+export declare function decodeCcPushReq(bytes: Uint8Array): {
+    contentsType?: number;
+    contents?: Uint8Array;
+    compContentsType?: number;
+};
 export interface PlanetMcHdr {
     cid: string;
     srcChanId: bigint;
@@ -264,6 +293,35 @@ export interface McDataRsp {
 }
 export declare function packMcDataRsp(r: McDataRsp): Uint8Array;
 export declare function decodeMcDataRsp(bytes: Uint8Array): McDataRsp;
+/** Native standalone MC STRM_REQ (0x318d): VP8 in SVC mode, VGA receive layer. */
+export declare function packMcStrmReq(sequence: number, requests: Array<{
+    ssrc: number;
+    channel: number;
+    start: boolean;
+}>): Uint8Array;
+/** The same STRM_REQ arrives at a publisher to select its outgoing SVC layers. */
+export declare function decodeMcStrmReq(bytes: Uint8Array): {
+    sequence: number;
+    requests: {
+        type: number;
+        ssrc: number;
+        mid: string;
+        startOperation: number;
+        encoding: number;
+        channel: number;
+        layers: {
+            layer: number;
+            codec: number;
+        }[];
+    }[];
+};
+/** NOTIFY_STRM_REQ.strm_info; validate the entire update before applying it. */
+export declare function decodeMcNotifyStrmReq(bytes: Uint8Array): Array<{
+    state: 0 | 1 | 2;
+    ssrc: number;
+    channel: number;
+    mid?: string;
+}>;
 export interface PlanetUeInfo {
     userId?: string;
     svcId?: string;
@@ -355,7 +413,16 @@ export interface StrmSpec {
     link?: LinkAttr;
 }
 export declare function packStrmSpec(r: StrmSpec): Uint8Array;
-export declare function packMcDataSessionPayload(body: Uint8Array): Uint8Array;
+export declare function packMcDataSessionPayload(body: Uint8Array, type?: 1 | 2): Uint8Array;
+export interface McStreamControl {
+    operation: 1 | 2 | 3 | 4;
+    mediaKind: number;
+    code: number;
+    ssrcs: number[];
+}
+/** MCMMD STRM_CTRL: native jup_media_start, not CC call-type renegotiation. */
+export declare function packMcStreamControl(control: McStreamControl): Uint8Array;
+export declare function decodeMcStreamControl(data: Uint8Array): McStreamControl | undefined;
 export interface McSessionRsp {
     result?: number;
     relCode?: number;
@@ -462,6 +529,28 @@ export interface CcSetupRsp {
 }
 export declare function packCcSetupRsp(r: CcSetupRsp): Uint8Array;
 export declare function decodeCcSetupRsp(bytes: Uint8Array): CcSetupRsp;
+export interface CcVerifyRsp {
+    result?: number;
+    relCode?: number;
+    relPhrase?: string;
+    cfgs?: string;
+    oCapas: number[];
+    offer?: Uint8Array;
+    releaser?: string;
+    compCfgs?: Uint8Array;
+    compCfgsType?: number;
+    oUeData?: Uint8Array;
+    oUeDataCompType?: number;
+    oFeatures: Uint8Array[];
+    iCountry?: string;
+    iDevId?: string;
+    aliveRptInterval?: number;
+    stops?: string;
+    pt?: boolean;
+    maxCallTimeSec?: number;
+}
+export declare function packCcVerifyRsp(r: CcVerifyRsp): Uint8Array;
+export declare function decodeCcVerifyRsp(bytes: Uint8Array): CcVerifyRsp;
 export interface CcParticipateRsp {
     result?: number;
     relCode?: number;
@@ -559,8 +648,16 @@ export interface NativeSetupMediaRecord {
     enabled?: number;
     bitrate?: number;
     kind?: number;
+    /** All advertised pmap values, not only the first codec. */
+    kinds?: number[];
+    features?: Array<{
+        id?: number;
+        version?: number;
+    }>;
     rtpId?: number;
+    /** Native local_srcid (SSRC), despite the legacy property name. */
     rtpPort?: number;
+    /** Native remote_srcid (SSRC), despite the legacy property name. */
     rtcpId?: number;
     raw: Uint8Array;
 }

@@ -13,6 +13,8 @@ export interface SrtpCryptoContext {
   cipherSalt: Uint8Array;
   authKey: Uint8Array;
   rocs: Map<number, number>;
+  /** Highest authenticated receive sequence, per SSRC (RFC 3711 Appendix A). */
+  recvSequences?: Map<number, number>;
 }
 
 const LABEL_RTP_ENCR = 0x00;
@@ -31,7 +33,7 @@ export async function deriveSrtpContext(masterKeying: Uint8Array): Promise<SrtpC
   const cipherKey = await deriveKey(masterKey, masterSalt, LABEL_RTP_ENCR, 16);
   const authKey = await deriveKey(masterKey, masterSalt, LABEL_RTP_AUTH, 20);
   const cipherSalt = await deriveKey(masterKey, masterSalt, LABEL_RTP_SALT, 14);
-  return { cipherKey, cipherSalt, authKey, rocs: new Map() };
+  return { cipherKey, cipherSalt, authKey, rocs: new Map(), recvSequences: new Map() };
 }
 
 /** AES-CM PRF: encrypt the IV with the master key to produce L bytes. */
@@ -103,7 +105,14 @@ export async function srtpDecrypt(
 
   const ssrc = readU32(srtpPacket, 8);
   const seq = readU16(srtpPacket, 2);
-  const roc = ctx.rocs.get(ssrc) ?? 0;
+  const currentRoc = ctx.rocs.get(ssrc) ?? 0;
+  const highest = ctx.recvSequences?.get(ssrc);
+  let roc = currentRoc;
+  if (highest !== undefined) {
+    if (highest < 0x8000 && seq - highest > 0x8000) roc--;
+    else if (highest >= 0x8000 && highest - seq > 0x8000) roc++;
+  }
+  if (roc < 0 || roc > 0xffffffff) throw new Error("SRTP auth tag mismatch");
 
   const { createHmac } = await import("node:crypto");
   const h = createHmac("sha1", Buffer.from(ctx.authKey));
@@ -121,6 +130,12 @@ export async function srtpDecrypt(
   const out = new Uint8Array(headerLen + dec.length);
   out.set(inner.subarray(0, headerLen), 0);
   out.set(dec, headerLen);
+  // Never advance receive state from an unauthenticated packet or an older
+  // reordered packet. A lost 65535 must not prevent decrypting sequence zero.
+  if (highest === undefined || roc > currentRoc || (roc === currentRoc && seq > highest)) {
+    ctx.rocs.set(ssrc, roc);
+    (ctx.recvSequences ??= new Map()).set(ssrc, seq);
+  }
   return out;
 }
 
@@ -217,20 +232,34 @@ export function parseRtp(pkt: Uint8Array): {
   ssrc: number;
   marker: boolean;
   payload: Uint8Array;
+  extensionProfile?: number;
+  extensionData?: Uint8Array;
 } {
-  if (pkt.length < 12) throw new Error("RTP too short");
+  const offset = rtpHeaderLength(pkt);
+  const padding = pkt[0] & 0x20 ? pkt[pkt.length - 1] : 0;
+  if (pkt[0] & 0x20 && (padding === 0 || padding > pkt.length - offset)) {
+    throw new Error("Invalid RTP padding");
+  }
+  const extensionOffset = 12 + (pkt[0] & 0x0f) * 4;
   return {
     payloadType: pkt[1] & 0x7f,
     marker: (pkt[1] & 0x80) !== 0,
     seq: readU16(pkt, 2),
     timestamp: readU32(pkt, 4),
     ssrc: readU32(pkt, 8),
-    payload: pkt.subarray(rtpHeaderLength(pkt)),
+    payload: pkt.subarray(offset, pkt.length - padding),
+    ...(pkt[0] & 0x10
+      ? {
+          extensionProfile: readU16(pkt, extensionOffset),
+          extensionData: pkt.subarray(extensionOffset + 4, offset),
+        }
+      : {}),
   };
 }
 
 function rtpHeaderLength(pkt: Uint8Array): number {
   if (pkt.length < 12) throw new Error("RTP too short");
+  if (pkt[0] >>> 6 !== 2) throw new Error("Invalid RTP version");
   const csrcCount = pkt[0] & 0x0f;
   let offset = 12 + csrcCount * 4;
   if (pkt.length < offset) throw new Error("RTP CSRC header truncated");

@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: workspace
     steps:
-      # このリポジトリは親 monorepo (nezumi0627/vyline) の packages/protocol。
+      # このリポジトリは同一 owner の親 monorepo (OWNER/vyline) の packages/protocol。
       # workspace:* の依存 (@vyline/line-types / @vyline/loose-types) を解決するため
       # 単一ワークスペースを組み立ててから bun install する。
       #
@@ -30,6 +30,7 @@ jobs:
         id: sibref
         env:
           GH_TOKEN: ${{ github.token }}
+          SIBLING_REPO: ${{ github.repository_owner }}/vyline
         run: |
           # Determine branch: PR uses head_ref, workflow_dispatch uses ref (refs/heads/<branch>)
           if [ -n "${{ github.head_ref }}" ]; then
@@ -41,7 +42,7 @@ jobs:
           REF="main"
           for c in "$BRANCH" main; do
             [ -z "$c" ] && continue
-            if gh api "repos/nezumi0627/vyline/branches/$c" >/dev/null 2>&1; then
+            if gh api "repos/$SIBLING_REPO/branches/$c" >/dev/null 2>&1; then
               REF="$c"
               break
             fi
@@ -52,7 +53,7 @@ jobs:
       - name: Checkout sibling packages from monorepo
         uses: actions/checkout@v4
         with:
-          repository: nezumi0627/vyline
+          repository: ${{ github.repository_owner }}/vyline
           ref: ${{ steps.sibref.outputs.ref }}
           sparse-checkout: |
             Vyline/packages/line-types

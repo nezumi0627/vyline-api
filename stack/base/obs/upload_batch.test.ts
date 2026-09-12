@@ -15,11 +15,11 @@ function decodeTalkMeta(value: string): Record<string, string> {
   };
   const data = Buffer.from(outer.message, "base64");
   let offset = 0;
-  assertEquals(data.readUInt8(offset++), 13); // MAP
+  assertEquals(data.readUInt8(offset++), 13);
   assertEquals(data.readInt16BE(offset), 18);
   offset += 2;
-  assertEquals(data.readUInt8(offset++), 11); // STRING key
-  assertEquals(data.readUInt8(offset++), 11); // STRING value
+  assertEquals(data.readUInt8(offset++), 11);
+  assertEquals(data.readUInt8(offset++), 11);
   const size = data.readInt32BE(offset);
   offset += 4;
   const result: Record<string, string> = {};
@@ -27,14 +27,12 @@ function decodeTalkMeta(value: string): Record<string, string> {
   const readString = () => {
     const length = data.readInt32BE(offset);
     offset += 4;
-    const value = data.subarray(offset, offset + length).toString("utf8");
+    const decoded = data.subarray(offset, offset + length).toString("utf8");
     offset += length;
-    return value;
+    return decoded;
   };
 
-  for (let index = 0; index < size; index++) {
-    result[readString()] = readString();
-  }
+  for (let index = 0; index < size; index++) result[readString()] = readString();
   return result;
 }
 
@@ -50,11 +48,7 @@ function makeObs(gid = "628271567210283486") {
     calls.push(options);
     const headers = new Headers();
     headers.set("x-line-message-gid", gid);
-    return {
-      objId: `message-${calls.length}`,
-      objHash: "",
-      headers,
-    };
+    return { objId: `message-${calls.length}`, objHash: "", headers };
   }) as never;
   return { obs, calls };
 }

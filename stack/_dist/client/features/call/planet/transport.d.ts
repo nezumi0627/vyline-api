@@ -14,11 +14,16 @@
  *   6. close(): send REL_REQ
  */
 import type * as LINETypes from "@vyline/line-types";
-import type { CallTransport } from "../session.ts";
+import type { CallAudioProfile, CallKind, CallTransport } from "../session.ts";
+import { type ConferenceMember } from "./conference.js";
+import type { CallAudioPacket } from "../groupAudio.js";
+import { type EncodedVideoFrame } from "./evs3.js";
 import { type EphemeralKeypair } from "./crypto.js";
-import { type CcConnReq, decodeCcParticipateRsp, decodeCcSetupRsp, decodePlanetMsg, type NativeSetupOffer, type PlanetSetupOfferMaterial, type PlanetUserAgent } from "./schema.js";
+import { type CcConnReq, decodeCcConnRsp, decodeCcParticipateRsp, decodeCcSetupRsp, decodeCcVerifyRsp, decodePlanetMsg, type NativeSetupOffer, type PlanetSetupOfferMaterial, type PlanetUserAgent } from "./schema.js";
 export interface PlanetTransportOpts {
     localMid: string;
+    /** Existing server call id for an incoming Talk notification. */
+    callId?: string;
     deviceInfo?: string;
     userAgent?: PlanetUserAgent;
     deviceId?: string;
@@ -64,6 +69,12 @@ export interface PlanetAnswerResult {
     connRspSent: boolean;
     mediaReady: boolean;
 }
+export interface PlanetIncomingAnswerResult {
+    verifyRsp: ReturnType<typeof decodeCcVerifyRsp>;
+    connRsp: ReturnType<typeof decodeCcConnRsp>;
+    peerOffer?: NativeSetupOffer;
+    mediaReady: boolean;
+}
 export interface PlanetGroupJoinResult {
     plaintext: Uint8Array;
     message: ReturnType<typeof decodePlanetMsg>;
@@ -78,10 +89,18 @@ export interface PlanetLocalMediaOffer {
 }
 export declare class PlanetTransport implements CallTransport {
     #private;
+    onConference?: (members: ConferenceMember[]) => void;
+    onVideoState?: (enabled: boolean) => void;
     constructor(opts: PlanetTransportOpts);
+    /** True after the peer released the call (REL_REQ). receive() then terminates. */
+    get remoteEnded(): boolean;
+    get remoteEndReason(): string | undefined;
+    get audioProfile(): CallAudioProfile | undefined;
+    get videoAvailable(): boolean;
     get localMediaOffer(): PlanetLocalMediaOffer | undefined;
     connect(opts: {
         route: LINETypes.CallRoute | LINETypes.GroupCallRoute;
+        kind?: CallKind;
     }): Promise<void>;
     inviteDetailed(opts: {
         to: string;
@@ -89,6 +108,11 @@ export declare class PlanetTransport implements CallTransport {
     invite(opts: {
         to: string;
     }): Promise<Uint8Array>;
+    /**
+     * Accept an incoming 1:1 PLANET call.
+     * Native responder flow: VERIFY_REQ -> VERIFY_RSP(offer) -> CONN_REQ -> CONN_RSP.
+     */
+    answer(): Promise<PlanetIncomingAnswerResult>;
     joinGroupDetailed(opts: {
         roomId: string;
     }): Promise<PlanetGroupJoinResult>;
@@ -105,6 +129,11 @@ export declare class PlanetTransport implements CallTransport {
     close(): Promise<void>;
     send(opusPacket: Uint8Array, opts?: {
         timestampStep?: number;
+        audioLevel?: number;
     }): Promise<void>;
+    setVideoEnabled(enabled: boolean): Promise<void>;
+    sendVideo(frame: EncodedVideoFrame): Promise<void>;
+    receiveVideo(): AsyncIterable<EncodedVideoFrame>;
     receive(): AsyncIterable<Uint8Array>;
+    receiveAudio(): AsyncIterable<CallAudioPacket>;
 }

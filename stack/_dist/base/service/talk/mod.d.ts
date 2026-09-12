@@ -85,6 +85,10 @@ export declare class TalkService implements BaseService {
     getSettings(...param: Parameters<typeof LINEStruct.getSettings_args>): Promise<LINETypes.getSettings_result["success"]>;
     sendChatChecked(...param: Parameters<typeof LINEStruct.sendChatChecked_args>): Promise<void>;
     unsendMessage(...param: Parameters<typeof LINEStruct.unsendMessage_args>): Promise<void>;
+    silentlyUnsendMessage(options: {
+        messageId: string;
+        reqSeq?: number;
+    }): Promise<LINETypes.SilentlyUnsendMessageResponse>;
     deleteOtherFromChat(...param: Parameters<typeof LINEStruct.deleteOtherFromChat_args>): Promise<LINETypes.deleteOtherFromChat_result["success"]>;
     inviteIntoChat(options: {
         chatMid: string;
@@ -129,7 +133,7 @@ export declare class TalkService implements BaseService {
     negotiateE2EEPublicKey(...param: Parameters<typeof LINEStruct.negotiateE2EEPublicKey_args>): Promise<LINETypes.negotiateE2EEPublicKey_result["success"]>;
     react(options: {
         id: bigint | number;
-        reaction: LINETypes.MessageReactionType;
+        reaction: LINETypes.MessageReactionType | LINETypes.PaidReactionType;
     }): Promise<void>;
     createChat(...param: Parameters<typeof LINEStruct.createChat_args>): Promise<LINETypes.createChat_result["success"]>;
     setChatHiddenStatus(...param: Parameters<typeof LINEStruct.setChatHiddenStatus_args>): Promise<void>;

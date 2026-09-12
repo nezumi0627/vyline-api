@@ -24,7 +24,7 @@ import { Buffer } from "node:buffer";
 
 // ─── varint + wire-type encoding ────────────────────────────────────────
 
-export const enum WireType {
+export enum WireType {
   Varint = 0,
   Fixed64 = 1,
   LengthDelim = 2,
@@ -43,17 +43,19 @@ export function encodeVarint(v: bigint | number): Uint8Array {
 }
 
 export function decodeVarint(buf: Uint8Array, off: number): [bigint, number] {
-  let v = 0n,
-    shift = 0n,
-    i = off;
-  while (i < buf.length) {
+  if (!Number.isInteger(off) || off < 0) throw new Error("Invalid protobuf offset");
+  let v = 0n;
+  let shift = 0n;
+  let i = off;
+  while (i < buf.length && i - off < 10) {
     const b = BigInt(buf[i]);
+    if (i - off === 9 && b > 1n) throw new Error("Protobuf varint exceeds uint64");
     v |= (b & 0x7fn) << shift;
     shift += 7n;
     i++;
-    if ((b & 0x80n) === 0n) break;
+    if ((b & 0x80n) === 0n) return [v, i - off];
   }
-  return [v, i - off];
+  throw new Error("Truncated protobuf varint");
 }
 
 function fixed64(v: bigint): Uint8Array {
@@ -332,7 +334,11 @@ function packDataOffer(codec: Uint8Array, path: Uint8Array): Uint8Array {
  * blobs. Dynamic cryptographic material is supplied by the caller so tests can
  * be deterministic.
  */
-export function packNativeSetupOffer(material: PlanetSetupOfferMaterial): Uint8Array {
+export function packNativeSetupOffer(
+  material: PlanetSetupOfferMaterial,
+  selectedCrypto?: "e2ee" | "simple",
+  videoState?: { enabled: boolean },
+): Uint8Array {
   if (material.mediaPubKey.length !== 33) {
     throw new Error("packNativeSetupOffer: mediaPubKey must be 33 bytes");
   }
@@ -355,7 +361,7 @@ export function packNativeSetupOffer(material: PlanetSetupOfferMaterial): Uint8A
   const video = packAudioVideoOffer(
     "V",
     packOfferCodec("V", {
-      enabled: 0,
+      enabled: Number(videoState?.enabled ?? false),
       bitrate: 800,
       fps: 24,
       profile: 2,
@@ -387,8 +393,10 @@ export function packNativeSetupOffer(material: PlanetSetupOfferMaterial): Uint8A
   emitMessage(out, 1, audio);
   emitMessage(out, 1, video);
   emitMessage(out, 1, data);
-  emitMessage(out, 2, finalize(secA));
-  emitMessage(out, 2, finalize(secB));
+  // Offers may list alternatives. Native ignores ALL crypto in an answer
+  // unless it contains exactly one selected scheme (Windows RVA 0xe6f60).
+  if (selectedCrypto !== "simple") emitMessage(out, 2, finalize(secA));
+  if (selectedCrypto !== "e2ee") emitMessage(out, 2, finalize(secB));
   emitMessage(out, 3, finalize(version));
   return finalize(out);
 }
@@ -405,6 +413,7 @@ export interface PlanetGroupParticipateOfferMaterial {
  */
 export function packNativeGroupParticipateOffer(
   material: PlanetGroupParticipateOfferMaterial,
+  initialVideo = false,
 ): Uint8Array {
   if (material.mediaSecret.length !== 30) {
     throw new Error("packNativeGroupParticipateOffer: mediaSecret must be 30 bytes");
@@ -422,7 +431,7 @@ export function packNativeGroupParticipateOffer(
   const videoCodec: Buf = { bytes: [] };
   emitBytes(videoCodec, 1, new TextEncoder().encode("V"));
   emitUint32(videoCodec, 2, 3);
-  emitUint32(videoCodec, 3, 0);
+  emitUint32(videoCodec, 3, initialVideo ? 1 : 0);
   emitUint32(videoCodec, 4, 800);
   emitUint32(videoCodec, 5, 15);
   emitUint32(videoCodec, 6, 2);
@@ -664,6 +673,57 @@ export function packCcSetupReq(r: CcSetupReq): Uint8Array {
   return finalize(b);
 }
 
+// ─── cc_verify_req — incoming 1:1 call verification ────────────────────
+//
+// Field numbers were recovered from libandromeda.so's protobuf-c
+// descriptors. VERIFY deliberately differs from SETUP after tag 8.
+
+export interface CcVerifyReq {
+  initiator: string; // tag 1
+  responder: string; // tag 2
+  iZone?: string; // tag 3
+  rZone?: string; // tag 4
+  ua?: Uint8Array; // tag 5 — packed PlanetUserAgent
+  devId?: string; // tag 6
+  commTypeFlags?: number; // tag 7 — enum
+  capas?: number[]; // tag 8 — repeated enum
+  credential?: Uint8Array; // tag 9
+  svcKey?: string; // tag 10
+  crt?: boolean; // tag 11
+  netType?: number; // tag 12 — enum
+  stid?: string; // tag 21
+  svcId?: string; // tag 51
+  tgtSvcId?: string; // tag 52
+  uePublicAddr?: Uint8Array; // tag 101 — packed PlanetAddr
+  rVisitedZone?: string; // tag 102
+  pathCheck?: boolean; // tag 105
+  interDomain?: boolean; // tag 153
+}
+
+export function packCcVerifyReq(r: CcVerifyReq): Uint8Array {
+  const b: Buf = { bytes: [] };
+  emitString(b, 1, r.initiator);
+  emitString(b, 2, r.responder);
+  if (r.iZone !== undefined) emitString(b, 3, r.iZone);
+  if (r.rZone !== undefined) emitString(b, 4, r.rZone);
+  if (r.ua) emitMessage(b, 5, r.ua);
+  if (r.devId !== undefined) emitString(b, 6, r.devId);
+  if (r.commTypeFlags !== undefined) emitEnum(b, 7, r.commTypeFlags);
+  for (const c of r.capas ?? []) emitEnum(b, 8, c);
+  if (r.credential) emitBytes(b, 9, r.credential);
+  if (r.svcKey !== undefined) emitString(b, 10, r.svcKey);
+  if (r.crt !== undefined) emitBool(b, 11, r.crt);
+  if (r.netType !== undefined) emitEnum(b, 12, r.netType);
+  if (r.stid !== undefined) emitString(b, 21, r.stid);
+  if (r.svcId !== undefined) emitString(b, 51, r.svcId);
+  if (r.tgtSvcId !== undefined) emitString(b, 52, r.tgtSvcId);
+  if (r.uePublicAddr) emitMessage(b, 101, r.uePublicAddr);
+  if (r.rVisitedZone !== undefined) emitString(b, 102, r.rVisitedZone);
+  if (r.pathCheck !== undefined) emitBool(b, 105, r.pathCheck);
+  if (r.interDomain !== undefined) emitBool(b, 153, r.interDomain);
+  return finalize(b);
+}
+
 // ─── cc_participate_req / rsp — group-call join flow ───────────────────
 
 export interface CcParticipateReq {
@@ -809,6 +869,20 @@ export function decodeCcRelReq(bytes: Uint8Array): CcRelReq {
   };
 }
 
+// Native cc_push_req: contents are the same conference_info as PARTICIPATE_RSP.
+export function decodeCcPushReq(bytes: Uint8Array): {
+  contentsType?: number;
+  contents?: Uint8Array;
+  compContentsType?: number;
+} {
+  const fields = decodeFields(bytes);
+  return {
+    contentsType: asNumberField(fields, 1),
+    contents: asBytesField(fields, 2),
+    compContentsType: asNumberField(fields, 3),
+  };
+}
+
 // ─── planet_mc_msg / mc_data_req — group media-control bootstrap ───────
 
 export interface PlanetMcHdr {
@@ -878,6 +952,118 @@ export function decodeMcDataRsp(bytes: Uint8Array): McDataRsp {
     dispatchId: asNumberField(fields, 4),
     data: asBytesField(fields, 5),
   };
+}
+
+/** Native standalone MC STRM_REQ (0x318d): VP8 in SVC mode, VGA receive layer. */
+export function packMcStrmReq(
+  sequence: number,
+  requests: Array<{ ssrc: number; channel: number; start: boolean }>,
+): Uint8Array {
+  if (
+    requests.length > 60 ||
+    [sequence, ...requests.flatMap((r) => [r.ssrc, r.channel])].some(
+      (v) => !Number.isInteger(v) || v < 0 || v > 0xffffffff,
+    )
+  )
+    throw new Error("Invalid stream subscription");
+  const b: Buf = { bytes: [] };
+  for (const request of requests) {
+    const record: Buf = { bytes: [] };
+    const layer: Buf = { bytes: [] };
+    emitEnum(record, 1, request.start ? 1 : 0);
+    emitUint32(record, 3, request.ssrc);
+    emitEnum(record, 5, request.start ? 1 : 0);
+    emitEnum(record, 6, 1);
+    emitUint32(record, 7, request.channel);
+    emitEnum(layer, 1, 2);
+    emitEnum(layer, 2, 0);
+    emitMessage(record, 8, finalize(layer));
+    emitMessage(b, 1, finalize(record));
+  }
+  emitUint32(b, 2, sequence);
+  return finalize(b);
+}
+
+/** The same STRM_REQ arrives at a publisher to select its outgoing SVC layers. */
+export function decodeMcStrmReq(bytes: Uint8Array) {
+  if (bytes.length > 65536) throw new Error("Stream request too large");
+  const one = (fields: DecodedField[], tag: number) => {
+    const found = fields.filter((field) => field.tag === tag);
+    if (found.length > 1) throw new Error("Duplicate stream request field");
+    return found[0]?.value;
+  };
+  const uint = (fields: DecodedField[], tag: number) => {
+    const value = one(fields, tag);
+    if (value === undefined) return;
+    if (typeof value !== "bigint" || value < 0n || value > 0xffffffffn)
+      throw new Error("Invalid stream request integer");
+    return Number(value);
+  };
+  const fields = decodeFields(bytes);
+  const entries = fields.filter((field) => field.tag === 1);
+  if (!entries.length || entries.length > 60) throw new Error("Invalid stream request count");
+  const requests = entries.map((entry) => {
+    if (!(entry.value instanceof Uint8Array)) throw new Error("Invalid stream request record");
+    const values = decodeFields(entry.value);
+    const type = uint(values, 1);
+    const ssrc = uint(values, 3);
+    const uid = one(values, 2);
+    const mid = uid instanceof Uint8Array ? new TextDecoder().decode(uid) : undefined;
+    const startOperation = uint(values, 5) ?? 0;
+    const encoding = uint(values, 6) ?? 0;
+    if (
+      type === undefined ||
+      type > 1 ||
+      ssrc === undefined ||
+      startOperation > 1 ||
+      encoding > 2 ||
+      (uid !== undefined && (!mid || !/^u[0-9a-f]{32}$/.test(mid)))
+    )
+      throw new Error("Invalid stream request");
+    const layerRecords = values.filter((field) => field.tag === 8);
+    if (layerRecords.length > 16) throw new Error("Too many requested video layers");
+    const layers = layerRecords.map((record) => {
+      if (!(record.value instanceof Uint8Array)) throw new Error("Invalid video layer");
+      const fields = decodeFields(record.value);
+      const layer = uint(fields, 1);
+      const codec = uint(fields, 2);
+      if (layer === undefined || layer > 15 || codec === undefined || codec > 3)
+        throw new Error("Invalid requested video layer");
+      return { layer, codec };
+    });
+    return { type, ssrc, mid, startOperation, encoding, channel: uint(values, 7), layers };
+  });
+  return { sequence: uint(fields, 2), requests };
+}
+
+/** NOTIFY_STRM_REQ.strm_info; validate the entire update before applying it. */
+export function decodeMcNotifyStrmReq(bytes: Uint8Array): Array<{
+  state: 0 | 1 | 2;
+  ssrc: number;
+  channel: number;
+  mid?: string;
+}> {
+  if (bytes.length > 65536) throw new Error("Stream notification too large");
+  const records = decodeFields(bytes).filter((f) => f.tag === 1);
+  if (records.length > 512) throw new Error("Too many stream notifications");
+  return records.map((record) => {
+    if (!(record.value instanceof Uint8Array)) throw new Error("Invalid stream notification");
+    const fields = decodeFields(record.value);
+    for (const tag of [1, 2, 3, 5])
+      if (fields.filter((f) => f.tag === tag).length > 1) throw new Error("Duplicate stream field");
+    const numbers = [1, 3, 5].map((tag) => {
+      const value = fields.find((f) => f.tag === tag)?.value;
+      if (typeof value !== "bigint" || value < 0n || value > 0xffffffffn)
+        throw new Error("Invalid stream integer");
+      return Number(value);
+    });
+    const [state, ssrc, channel] = numbers;
+    const uid = fields.find((f) => f.tag === 2)?.value;
+    const mid = uid instanceof Uint8Array ? new TextDecoder().decode(uid) : undefined;
+    if (state > 2 || (uid !== undefined && (!mid || !/^u[0-9a-f]{32}$/.test(mid))))
+      throw new Error("Invalid stream identity/state");
+    return { state: state as 0 | 1 | 2, ssrc, channel, mid };
+  });
 }
 
 export interface PlanetUeInfo {
@@ -1113,11 +1299,12 @@ export function packStrmSpec(r: StrmSpec): Uint8Array {
   return finalize(b);
 }
 
-export function packMcDataSessionPayload(body: Uint8Array): Uint8Array {
+export function packMcDataSessionPayload(body: Uint8Array, type: 1 | 2 = 2): Uint8Array {
+  if (body.length > 0xffff) throw new Error("MCMMD payload too large");
   const pad = (4 - (body.length % 4)) % 4;
   const header = new Uint8Array([
     0x00,
-    0x02,
+    type,
     0x00,
     0x00,
     (body.length >>> 8) & 0xff,
@@ -1126,6 +1313,56 @@ export function packMcDataSessionPayload(body: Uint8Array): Uint8Array {
     0x00,
   ]);
   return concatSchemaBytes([header, body, new Uint8Array(pad)]);
+}
+
+export interface McStreamControl {
+  operation: 1 | 2 | 3 | 4;
+  mediaKind: number;
+  code: number;
+  ssrcs: number[];
+}
+
+/** MCMMD STRM_CTRL: native jup_media_start, not CC call-type renegotiation. */
+export function packMcStreamControl(control: McStreamControl): Uint8Array {
+  if (
+    control.ssrcs.length > 16 ||
+    ![1, 2, 3, 4].includes(control.operation) ||
+    [control.mediaKind, control.code, ...control.ssrcs].some(
+      (v) => !Number.isInteger(v) || v < 0 || v > 0xffffffff,
+    )
+  ) {
+    throw new Error("Invalid MCMMD stream control");
+  }
+  const body = new Uint8Array(12 + control.ssrcs.length * 4);
+  const view = new DataView(body.buffer);
+  view.setUint16(0, control.operation);
+  view.setUint16(2, control.ssrcs.length);
+  view.setUint32(4, control.mediaKind);
+  view.setUint32(8, control.code);
+  control.ssrcs.forEach((ssrc, i) => view.setUint32(12 + i * 4, ssrc));
+  return packMcDataSessionPayload(body, 1);
+}
+
+export function decodeMcStreamControl(data: Uint8Array): McStreamControl | undefined {
+  if (data.length < 8) throw new Error("Truncated MCMMD header");
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const length = view.getUint16(4);
+  if (data.length !== 8 + Math.ceil(length / 4) * 4) throw new Error("Invalid MCMMD length");
+  if (view.getUint16(0) !== 1) return undefined;
+  if (length < 12) throw new Error("Truncated stream control");
+  const operation = view.getUint16(8);
+  const count = view.getUint16(10);
+  if (![1, 2, 3, 4].includes(operation) || count > 16 || length < 12 + count * 4) {
+    throw new Error("Invalid stream control");
+  }
+  // Native 0x5d5970 ignores an invalid optional sender and returns the validated
+  // control. We do not use/read sender metadata (including any outer padding).
+  return {
+    operation: operation as McStreamControl["operation"],
+    mediaKind: view.getUint32(12),
+    code: view.getUint32(16),
+    ssrcs: Array.from({ length: count }, (_, i) => view.getUint32(20 + i * 4)),
+  };
 }
 
 // ─── mc join/change responses (1:1 BEPI handshake) ─────────────────────
@@ -1254,9 +1491,11 @@ export function decodeFields(buf: Uint8Array): DecodedField[] {
   const out: DecodedField[] = [];
   let i = 0;
   while (i < buf.length) {
+    if (out.length >= 4096) throw new Error("Too many protobuf fields");
     const [k, kl] = decodeVarint(buf, i);
     i += kl;
     const tag = Number(k >> 3n);
+    if (tag < 1 || tag > 0x1fffffff) throw new Error("Invalid protobuf field number");
     const wt = Number(k & 7n) as WireType;
     if (wt === WireType.Varint) {
       const [v, vl] = decodeVarint(buf, i);
@@ -1265,12 +1504,15 @@ export function decodeFields(buf: Uint8Array): DecodedField[] {
     } else if (wt === WireType.LengthDelim) {
       const [len, ll] = decodeVarint(buf, i);
       i += ll;
+      if (len > BigInt(buf.length - i)) throw new Error("Truncated protobuf bytes");
       out.push({ tag, wireType: wt, value: buf.subarray(i, i + Number(len)) });
       i += Number(len);
     } else if (wt === WireType.Fixed64) {
+      if (i + 8 > buf.length) throw new Error("Truncated protobuf fixed64");
       out.push({ tag, wireType: wt, value: readFixed64(buf, i) });
       i += 8;
     } else if (wt === WireType.Fixed32) {
+      if (i + 4 > buf.length) throw new Error("Truncated protobuf fixed32");
       out.push({ tag, wireType: wt, value: buf.subarray(i, i + 4) });
       i += 4;
     } else throw new Error(`decodeFields: unknown wire type ${wt}`);
@@ -1524,6 +1766,74 @@ export function decodeCcSetupRsp(bytes: Uint8Array): CcSetupRsp {
     tgtSvcId: asStringField(fields, 152),
     interDomain: asBoolField(fields, 153),
     maxCallTimeSec: asNumberField(fields, 154),
+  };
+}
+
+export interface CcVerifyRsp {
+  result?: number; // tag 1
+  relCode?: number; // tag 2
+  relPhrase?: string; // tag 3
+  cfgs?: string; // tag 4
+  oCapas: number[]; // tag 5 — repeated enum
+  offer?: Uint8Array; // tag 6 — caller media/security offer
+  releaser?: string; // tag 8
+  compCfgs?: Uint8Array; // tag 9
+  compCfgsType?: number; // tag 10 — enum
+  oUeData?: Uint8Array; // tag 11
+  oUeDataCompType?: number; // tag 12 — enum
+  oFeatures: Uint8Array[]; // tag 13 — repeated message
+  iCountry?: string; // tag 14
+  iDevId?: string; // tag 101
+  aliveRptInterval?: number; // tag 102
+  stops?: string; // tag 103
+  pt?: boolean; // tag 111
+  maxCallTimeSec?: number; // tag 112
+}
+
+export function packCcVerifyRsp(r: CcVerifyRsp): Uint8Array {
+  const b: Buf = { bytes: [] };
+  if (r.result !== undefined) emitEnum(b, 1, r.result);
+  if (r.relCode !== undefined) emitUint32(b, 2, r.relCode);
+  if (r.relPhrase !== undefined) emitString(b, 3, r.relPhrase);
+  if (r.cfgs !== undefined) emitString(b, 4, r.cfgs);
+  for (const c of r.oCapas) emitEnum(b, 5, c);
+  if (r.offer) emitBytes(b, 6, r.offer);
+  if (r.releaser !== undefined) emitString(b, 8, r.releaser);
+  if (r.compCfgs) emitBytes(b, 9, r.compCfgs);
+  if (r.compCfgsType !== undefined) emitEnum(b, 10, r.compCfgsType);
+  if (r.oUeData) emitBytes(b, 11, r.oUeData);
+  if (r.oUeDataCompType !== undefined) emitEnum(b, 12, r.oUeDataCompType);
+  for (const feature of r.oFeatures) emitMessage(b, 13, feature);
+  if (r.iCountry !== undefined) emitString(b, 14, r.iCountry);
+  if (r.iDevId !== undefined) emitString(b, 101, r.iDevId);
+  if (r.aliveRptInterval !== undefined) emitUint32(b, 102, r.aliveRptInterval);
+  if (r.stops !== undefined) emitString(b, 103, r.stops);
+  if (r.pt !== undefined) emitBool(b, 111, r.pt);
+  if (r.maxCallTimeSec !== undefined) emitUint32(b, 112, r.maxCallTimeSec);
+  return finalize(b);
+}
+
+export function decodeCcVerifyRsp(bytes: Uint8Array): CcVerifyRsp {
+  const fields = decodeFields(bytes);
+  return {
+    result: asNumberField(fields, 1),
+    relCode: asNumberField(fields, 2),
+    relPhrase: asStringField(fields, 3),
+    cfgs: asStringField(fields, 4),
+    oCapas: repeatedNumbers(fields, 5),
+    offer: asBytesField(fields, 6),
+    releaser: asStringField(fields, 8),
+    compCfgs: asBytesField(fields, 9),
+    compCfgsType: asNumberField(fields, 10),
+    oUeData: asBytesField(fields, 11),
+    oUeDataCompType: asNumberField(fields, 12),
+    oFeatures: repeatedBytes(fields, 13),
+    iCountry: asStringField(fields, 14),
+    iDevId: asStringField(fields, 101),
+    aliveRptInterval: asNumberField(fields, 102),
+    stops: asStringField(fields, 103),
+    pt: asBoolField(fields, 111),
+    maxCallTimeSec: asNumberField(fields, 112),
   };
 }
 
@@ -1804,8 +2114,13 @@ export interface NativeSetupMediaRecord {
   enabled?: number;
   bitrate?: number;
   kind?: number;
+  /** All advertised pmap values, not only the first codec. */
+  kinds?: number[];
+  features?: Array<{ id?: number; version?: number }>;
   rtpId?: number;
+  /** Native local_srcid (SSRC), despite the legacy property name. */
   rtpPort?: number;
+  /** Native remote_srcid (SSRC), despite the legacy property name. */
   rtcpId?: number;
   raw: Uint8Array;
 }
@@ -1836,6 +2151,13 @@ export function decodeNativeSetupOffer(bytes: Uint8Array): NativeSetupOffer {
         enabled: asNumberField(codec, 3),
         bitrate: asNumberField(codec, 4),
         kind: asNumberField(codec, 50),
+        kinds: repeatedNumbers(codec, 50),
+        features: item
+          .filter((field) => field.tag === 51 && field.value instanceof Uint8Array)
+          .map((field) => {
+            const feature = decodeFields(field.value as Uint8Array);
+            return { id: asNumberField(feature, 1), version: asNumberField(feature, 2) };
+          }),
         rtpId: asNumberField(path, 1),
         rtpPort: asNumberField(path, 11),
         rtcpId: asNumberField(path, 61),

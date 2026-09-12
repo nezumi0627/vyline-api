@@ -65,6 +65,7 @@ export class LegyEncryptedTransport {
         method: "POST",
         headers: this.#outerHeaders(request, options),
         body: new Uint8Array(encrypted),
+        signal: request.signal,
       }),
     );
     const responseBody = Buffer.from(await response.arrayBuffer());
@@ -107,7 +108,10 @@ export class LegyEncryptedTransport {
     headers.set("x-lhm", request.headers.get("x-lhm") ?? request.method);
     headers.set("accept", request.headers.get("accept") ?? "*/*");
     headers.set("accept-encoding", "gzip, deflate");
-    headers.set("connection", "keep-alive");
+    // Each transport owns a different x-lcs/AES key. Reusing a pooled LEGY
+    // connection across transports makes the next account fail with ECONNRESET.
+    // Keep encrypted requests off the shared pool; ordinary RPCs are unchanged.
+    headers.set("connection", "close");
     return headers;
   }
 

@@ -146,7 +146,11 @@ export type {
 } from "./e2ee/letterSealing.js";
 
 // ── OBS (protocol 置換) ──────────────────────────────────
-export { downloadObsMessageBytes, obsMessageDataUrl } from "./obs/download.js";
+export {
+  downloadObsMessageBytes,
+  downloadObsMessageResponse,
+  obsMessageDataUrl,
+} from "./obs/download.js";
 export type { ObsDownloadDeps } from "./obs/download.js";
 
 // ── Feature map (Desktop 更新時の調査ガイド) ───────────

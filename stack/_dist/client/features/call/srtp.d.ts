@@ -4,6 +4,8 @@ export interface SrtpCryptoContext {
     cipherSalt: Uint8Array;
     authKey: Uint8Array;
     rocs: Map<number, number>;
+    /** Highest authenticated receive sequence, per SSRC (RFC 3711 Appendix A). */
+    recvSequences?: Map<number, number>;
 }
 /** Derive SRTP session keys from the 30-byte SDES master keying material. */
 export declare function deriveSrtpContext(masterKeying: Uint8Array): Promise<SrtpCryptoContext>;
@@ -29,4 +31,6 @@ export declare function parseRtp(pkt: Uint8Array): {
     ssrc: number;
     marker: boolean;
     payload: Uint8Array;
+    extensionProfile?: number;
+    extensionData?: Uint8Array;
 };
