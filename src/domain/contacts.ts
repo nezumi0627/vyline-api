@@ -15,7 +15,9 @@ export class ContactsDomain {
   }
 
   async listFriendMids() {
-    const result = await this.client.base.relation.getUserFriendIds({ request: { blockStatus: "ALL" } });
+    const result = await this.client.base.relation.getUserFriendIds({
+      request: { blockStatus: "ALL" },
+    });
     return result.userFriendMids ?? [];
   }
 
