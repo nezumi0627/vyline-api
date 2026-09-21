@@ -668,6 +668,7 @@ export class LineObs {
       objHash,
       headers: response.headers.toString(),
     });
+    await response.body?.cancel().catch(() => undefined);
 
     return { objId, objHash, headers: response.headers };
   }
@@ -944,7 +945,7 @@ export class LineObs {
           if (
             !preview.isFile() ||
             preview.size <= 0 ||
-            preview.size !== previewSize ||
+            (previewSize != null && preview.size !== previewSize) ||
             preview.size > Math.min(maxBytes, size)
           ) {
             throw new Error("staged media preview size changed before E2EE upload");

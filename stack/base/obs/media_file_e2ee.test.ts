@@ -280,6 +280,27 @@ describe("file-backed E2EE media", () => {
     await expectOnlyFiles(root, ["source.bin"]);
   });
 
+  test("accepts previewPath without previewSize", async () => {
+    const root = await tempRoot();
+    const sourcePath = join(root, "source.bin");
+    const previewPath = join(root, "preview.bin");
+    await writeFile(sourcePath, "source image fixture");
+    await writeFile(previewPath, "preview");
+    const fixture = makeFileObs();
+
+    await fixture.obs.uploadMediaByE2EEFromFile({
+      dataPath: sourcePath,
+      size: (await stat(sourcePath)).size,
+      mimeType: "image/png",
+      oType: "image",
+      to: "u-recipient",
+      previewPath,
+    });
+
+    expect(fixture.uploaded).toHaveLength(2);
+    await expectOnlyFiles(root, ["preview.bin", "source.bin"]);
+  });
+
   test("stops a pre-aborted upload before key or OBS work and leaves no temporary file", async () => {
     const root = await tempRoot();
     const sourcePath = join(root, "source.bin");
@@ -446,4 +467,31 @@ test("encrypted voice messages retain measured duration after history sync", asy
   const { obs, sent } = makeFileObs();
   await obs.uploadMediaByE2EEFromFile({ dataPath: path, size: 13, mimeType: "audio/webm", oType: "audio", to: "u" + "1".repeat(32), filename: "voice.webm", durationMs: 3750 });
   expect(sent[0]?.contentMetadata).toMatchObject({ DURATION: "3750" });
+});
+
+test("uploadObjectForService cancels an unused success response body", async () => {
+  let cancelled = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      cancelled += 1;
+    },
+  });
+  const headers = new Headers({
+    "x-obs-oid": "OBJ-1",
+    "x-obs-hash": "HASH-1",
+  });
+  const obs = new LineObs({
+    log() {},
+    request: { getHeader: () => ({}) },
+    fetch: async () => new Response(body, { status: 200, headers }),
+  } as never);
+
+  const result = await obs.uploadObjectForService({
+    data: new Blob([Uint8Array.of(1)]),
+    oType: "file",
+  });
+
+  expect(result.objId).toBe("OBJ-1");
+  expect(result.objHash).toBe("HASH-1");
+  expect(cancelled).toBe(1);
 });
