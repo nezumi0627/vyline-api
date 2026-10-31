@@ -9,6 +9,15 @@ export interface AuthTokenCredential {
 
 export type AuthTokenInput = string | AuthTokenCredential;
 
+/** Keep the request client and persistence listeners on the same access token. */
+export function applyNextAccessToken(
+  client: { authToken?: string; emit: (event: "update:authtoken", token: string) => unknown },
+  token: string,
+): void {
+  client.authToken = token;
+  client.emit("update:authtoken", token);
+}
+
 export function parseAuthTokenInput(input: AuthTokenInput): AuthTokenCredential {
   if (typeof input !== "string") {
     return {

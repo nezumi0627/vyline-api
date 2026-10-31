@@ -1,6 +1,6 @@
 import { type NestedArray, type ParsedThrift, type ProtocolKey, Protocols } from "../thrift/mod.js";
 import { type BaseClient, InternalError } from "../core/mod.js";
-import { shouldUseLegyEncryptedAccess } from "./auth_token.js";
+import { applyNextAccessToken, shouldUseLegyEncryptedAccess } from "./auth_token.js";
 import { LegyEncryptedTransport } from "./legy.js";
 
 const square = ["/SQ1", "/SQLV1"];
@@ -169,7 +169,7 @@ export class RequestClient {
       : await this.client.fetch(request);
     const nextToken = response.headers.get("x-line-next-access");
     if (nextToken) {
-      this.client.emit("update:authtoken", nextToken);
+      applyNextAccessToken(this.client, nextToken);
     }
     const body = await response.arrayBuffer();
     const parsedBody = new Uint8Array(body);

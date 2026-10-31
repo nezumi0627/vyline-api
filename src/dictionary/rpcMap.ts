@@ -339,9 +339,9 @@ export const RPC_DICTIONARY: readonly RpcEntry[] = [
     path: "/S4",
     stackApi: "base.talk.updateContactSetting",
     domainApi: "session.contacts.rename",
-    backendApi: "renameContact",
+    backendApi: "renameContact / deleteContactMid",
     category: "contacts",
-    notes: "友だち表示名 override (CONTACT_SETTING_DISPLAY_NAME_OVERRIDE)",
+    notes: "表示名 override (flag=2) / 友だち削除 (CONTACT_SETTING_DELETE=16)",
   },
   {
     canonicalName: "blockContact",

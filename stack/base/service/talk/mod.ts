@@ -6,6 +6,7 @@ import { LINEStruct } from "../../thrift/mod.js";
 import type { Buffer } from "node:buffer";
 import { ContentType } from "../../thrift/readwrite/struct.js";
 import type { LooseType } from "@vyline/loose-types";
+import { applyNextAccessToken } from "../../request/auth_token.js";
 import {
   COMPACT_E2EE_MESSAGE_ENDPOINT,
   COMPACT_PLAIN_MESSAGE_ENDPOINT,
@@ -300,7 +301,7 @@ export class TalkService implements BaseService {
     });
     const nextToken = response.headers.get("x-line-next-access");
     if (nextToken) {
-      this.client.emit("update:authtoken", nextToken);
+      applyNextAccessToken(this.client, nextToken);
     }
     const parsedBody = new Uint8Array(await response.arrayBuffer());
     this.client.log("compactMessageResponse", {

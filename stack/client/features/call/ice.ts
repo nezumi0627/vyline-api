@@ -97,19 +97,25 @@ export async function gatherSrflx(
   timeoutMs = 5000,
 ): Promise<IceCandidate | null> {
   const req = await buildBindingRequestAsync({});
-  const reply = new Promise<Uint8Array | null>((res) => {
-    const t = setTimeout(() => res(null), timeoutMs);
+  const buf = await new Promise<Uint8Array | null>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>;
     const onMsg = (buf: Buffer) => {
-      clearTimeout(t);
+      clearTimeout(timer);
       sock.off("message", onMsg);
-      res(new Uint8Array(buf));
+      resolve(new Uint8Array(buf));
     };
     sock.on("message", onMsg);
+    timer = setTimeout(() => {
+      sock.off("message", onMsg);
+      resolve(null);
+    }, timeoutMs);
+    sock.send(Buffer.from(req), stunPort, stunHost, (error) => {
+      if (!error) return;
+      clearTimeout(timer);
+      sock.off("message", onMsg);
+      reject(error);
+    });
   });
-  await new Promise<void>((res, rj) =>
-    sock.send(Buffer.from(req), stunPort, stunHost, (e) => (e ? rj(e) : res())),
-  );
-  const buf = await reply;
   if (!buf) return null;
   const msg = parseStun(buf);
   const addr = readMappedAddress(msg);

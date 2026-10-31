@@ -3,7 +3,7 @@ import dgram from "node:dgram";
 import { Buffer } from "node:buffer";
 import { buildBindingRequestAsync, parseStun, readMappedAddress } from "./stun.ts";
 
-Deno.test("buildBindingRequest + parseStun round-trip", async () => {
+test("buildBindingRequest + parseStun round-trip", async () => {
   const txId = new Uint8Array(12);
   for (let i = 0; i < 12; i++) txId[i] = i + 1;
   const req = await buildBindingRequestAsync({
@@ -25,7 +25,7 @@ Deno.test("buildBindingRequest + parseStun round-trip", async () => {
   assert(parsed.attrs.has(0x8028));
 });
 
-if (process.env.VYLINE_RUN_NETWORK_TESTS === "1") Deno.test("STUN live probe against stun.l.google.com:19302 — discovers XOR-MAPPED-ADDRESS", async () => {
+if (process.env.VYLINE_RUN_NETWORK_TESTS === "1") test("STUN live probe against stun.l.google.com:19302 — discovers XOR-MAPPED-ADDRESS", async () => {
   const sock = dgram.createSocket("udp4");
   await new Promise<void>((r) => sock.bind({ address: "0.0.0.0", port: 0 }, () => r()));
   const respPromise = new Promise<Uint8Array>((res, rj) => {

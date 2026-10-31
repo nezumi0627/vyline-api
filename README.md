@@ -63,6 +63,8 @@ Backend (アプリ本体) は vyline モノレポ側にあり、`Vyline/backend/
 
 ## Login
 
+`loginWithEmail` / `loginWithQR` / `loginWithToken` の初期化引数には `storage: BaseStorage` が必要です。永続化先は呼び出し側が明示し、Vyline Backend はアカウント別 SQLite、単発の鍵抽出ツールは `MemoryStorage` を使います。クライアントが JSON ファイルへ自動保存する既定動作はありません。
+
 ### QR
 
 1. `loginWithQR` → プロトコルスタック `withQrCode`

@@ -33,4 +33,14 @@ export class ContactsDomain {
     const user = await this.client.getUser(input.mid);
     await user.rename(input.displayNameOverride);
   }
+
+  /** Removes the user from the friend list without deleting the chat history. */
+  async delete(mid: string): Promise<void> {
+    await this.client.base.talk.updateContactSetting({
+      reqSeq: await this.client.base.getReqseq(),
+      mid,
+      flag: "CONTACT_SETTING_DELETE",
+      value: "true",
+    });
+  }
 }

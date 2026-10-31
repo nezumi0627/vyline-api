@@ -273,7 +273,7 @@ export const MODULES_MAP: Record<FeatureId, FeatureModule> = {
   "profile-contacts": {
     id: "profile-contacts",
     title: "他人プロフィール・友だち名",
-    description: "getContactsV3 / updateContactSetting (表示名 override)",
+    description: "getContactsV3 / updateContactSetting (表示名 override・友だち削除)",
     priority: "medium",
     vylineFiles: [
       "src/domain/contacts.ts",
@@ -288,6 +288,7 @@ export const MODULES_MAP: Record<FeatureId, FeatureModule> = {
         "getContactsV3",
         "updateContactSetting",
         "CONTACT_SETTING_DISPLAY_NAME_OVERRIDE",
+        "CONTACT_SETTING_DELETE",
       ],
     },
     analysisDocs: ["docs/analysis/avatar-profile-api.md", "docs/protocol/dictionary.md"],
