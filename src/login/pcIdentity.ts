@@ -18,7 +18,7 @@ function readWmiModel(): string | null {
   const r = spawnSync(
     "powershell.exe",
     ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystem).Model"],
-    { encoding: "utf8", timeout: 10_000 },
+    { encoding: "utf8", timeout: 10_000, windowsHide: true },
   );
   if (r.status !== 0) return null;
   const model = (r.stdout ?? "").trim();
