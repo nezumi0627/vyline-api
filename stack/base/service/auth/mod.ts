@@ -2,6 +2,7 @@
 
 import { LINEStruct, type ProtocolKey, Protocols } from "../../thrift/mod.js";
 import { Buffer } from "node:buffer";
+import { applyNextAccessToken } from "../../request/auth_token.js";
 import type * as LINETypes from "@vyline/line-types";
 import { type BaseClient, InternalError } from "../../core/mod.js";
 import type { BaseService } from "../types.ts";
@@ -261,7 +262,7 @@ export class AuthService implements BaseService {
       body: payload,
     });
     const nextToken = response.headers.get("x-line-next-access");
-    if (nextToken) this.client.emit("update:authtoken", nextToken);
+    if (nextToken) applyNextAccessToken(this.client, nextToken);
     const buf = await response.arrayBuffer();
     const parsedBody = new Uint8Array(buf);
     let res: any;

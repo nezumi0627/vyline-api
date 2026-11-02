@@ -198,6 +198,29 @@ Deno.test("AndromedaTransport.invite: REGISTER + INVITE + ACK against mock UAS",
   }
 });
 
+Deno.test("AndromedaTransport.close ends a pending RTP receive iterator", async () => {
+  const mock = await spawnMockUas();
+  const t = new AndromedaTransport({ localMid: "u-test-mid" });
+  let closed = false;
+  try {
+    await t.connect({
+      route: { voipAddress: mock.host, voipUdpPort: mock.port, fromToken: "secret-pw" } as never,
+    });
+    await t.invite({ to: "u-peer" });
+    const next = t.receive()[Symbol.asyncIterator]().next();
+    await t.close();
+    closed = true;
+    const result = await Promise.race([
+      next.then((value) => value.done ? "done" : "packet"),
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 50)),
+    ]);
+    assertEquals(result, "done");
+  } finally {
+    if (!closed) await t.close();
+    await mock.stop();
+  }
+});
+
 Deno.test("AndromedaTransport.register: throws on missing voipAddress", async () => {
   const t = new AndromedaTransport({ localMid: "u-test-mid" });
   let err: unknown;

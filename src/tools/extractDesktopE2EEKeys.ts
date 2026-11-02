@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateKeyPair } from "curve25519-js";
+import { MemoryStorage } from "@vyline/protocol/stack/storage";
 import { loginWithToken } from "../client/VylineClient.js";
 import { loadCachedOrFallback } from "../desktop/persist.js";
 import type { DesktopE2EEKey, DesktopE2EEKeyDump } from "../login/importDesktopE2EE.js";
@@ -141,7 +142,7 @@ async function main(): Promise<void> {
   const profile = loadCachedOrFallback(join(DATA, "vyline"));
   const client = await loginWithToken(authToken, {
     profile,
-    storagePath: tokenEntry.storageFile ?? join(DATA, `storage-${accountId}.json`),
+    storage: new MemoryStorage(),
     desktopKeysPath: OUT,
   });
   await client.base.talk.getProfile();

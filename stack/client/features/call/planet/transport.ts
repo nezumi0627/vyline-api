@@ -222,6 +222,13 @@ export interface PlanetLocalMediaOffer {
   offer: Uint8Array;
 }
 
+export function callSetupFailure(setupRsp: ReturnType<typeof decodeCcSetupRsp>): Error | null {
+  const code = setupRsp.relCode && setupRsp.relCode !== 0 ? setupRsp.relCode : setupRsp.result;
+  if (code === undefined || code === 0) return null;
+  const phrase = setupRsp.relPhrase?.trim();
+  return new Error(`PLANET call released: ${phrase ? `${phrase} (${code})` : code}`);
+}
+
 interface CallRouteParsed {
   cscfHost: string;
   cscfPort: number;
@@ -1771,6 +1778,8 @@ export class PlanetTransport implements CallTransport {
     const setupBytes = reply.message.cc?.bodyBytes;
     if (!setupBytes) throw new Error("PLANET setup_rsp missing body");
     const setupRsp = decodeCcSetupRsp(setupBytes);
+    const setupFailure = callSetupFailure(setupRsp);
+    if (setupFailure) throw setupFailure;
     await this.#sendPinholeProbes();
     await this.#sendKeepalive();
     this.#startKeepalive(setupRsp.aliveRptInterval);

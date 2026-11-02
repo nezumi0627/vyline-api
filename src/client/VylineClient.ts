@@ -7,7 +7,7 @@
 
 import { Client } from "@vyline/protocol/stack";
 import { BaseClient } from "@vyline/protocol/stack/base";
-import { VylineFileStorage } from "../protocol/fileStorage.js";
+import type { BaseStorage } from "@vyline/protocol/stack/storage";
 import type { DesktopProfile } from "../desktop/types.js";
 import { patchDesktopTransport } from "../login/patchTransport.js";
 import { patchDesktopLogin } from "../login/patchLogin.js";
@@ -26,7 +26,8 @@ export type VylineClient = Client;
 
 export interface VylineLoginInit {
   profile: DesktopProfile;
-  storagePath: string;
+  /** Persistent state must use an explicitly chosen adapter (normally SQLite). */
+  storage: BaseStorage;
   /** 省略時は VYLINE_DEVICE / IOSIPAD */
   deviceMode?: VylineDeviceMode | string;
   desktopKeysPath?: string;
@@ -44,7 +45,7 @@ function createBase(init: VylineLoginInit): { base: BaseClient; mode: VylineDevi
     device: mode,
     ...(isDesktopEmulation(mode) ? { version: init.profile.identity.appVersion } : {}),
     endpoint,
-    storage: new VylineFileStorage(init.storagePath),
+    storage: init.storage,
   });
 
   if (isDesktopEmulation(mode)) {

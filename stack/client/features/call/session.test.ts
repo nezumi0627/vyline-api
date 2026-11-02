@@ -97,7 +97,7 @@ function codecsWithOneBadPacket(): CodecFactory {
   };
 }
 
-Deno.test("CallSession.start → acquiring → connecting → in-call state transitions", async () => {
+test("CallSession.start → acquiring → connecting → in-call state transitions", async () => {
   const { client, acquired } = fakeClient();
   const session = new CallSession(client, {
     to: "u-peer",
@@ -115,7 +115,7 @@ Deno.test("CallSession.start → acquiring → connecting → in-call state tran
   assert(route);
 });
 
-Deno.test("CallSession.start is idempotent", async () => {
+test("CallSession.start is idempotent", async () => {
   const { client } = fakeClient();
   const session = new CallSession(client, { to: "u-p", transport: recordingTransport() });
   const r1 = await session.start();
@@ -123,7 +123,7 @@ Deno.test("CallSession.start is idempotent", async () => {
   assertEquals(r1, r2);
 });
 
-Deno.test("CallSession starts VIDEO and toggles its media without replacing audio or route", async () => {
+test("CallSession starts VIDEO and toggles its media without replacing audio or route", async () => {
   const { client, acquired } = fakeClient();
   const transport = recordingTransport();
   const controls: boolean[] = [];
@@ -152,7 +152,7 @@ Deno.test("CallSession starts VIDEO and toggles its media without replacing audi
   await assertRejects(() => session.setVideoEnabled(true), Error, "not in-call");
 });
 
-Deno.test("CallSession does not show delayed video after peer camera pause", async () => {
+test("CallSession does not show delayed video after peer camera pause", async () => {
   const transport: CallTransport = {
     ...recordingTransport(),
     videoAvailable: true,
@@ -173,7 +173,7 @@ Deno.test("CallSession does not show delayed video after peer camera pause", asy
   await session.end();
 });
 
-Deno.test("group video needs a key per member and drops departed sources without pausing others", async () => {
+test("group video needs a key per member and drops departed sources without pausing others", async () => {
   const members = [1, 2].map((i) => ({
     mid: `u${String(i).repeat(32)}`,
     connected: true,
@@ -215,7 +215,7 @@ Deno.test("group video needs a key per member and drops departed sources without
   await session.end();
 });
 
-Deno.test("CallSession.start closes the transport when signaling fails", async () => {
+test("CallSession.start closes the transport when signaling fails", async () => {
   const { client } = fakeClient();
   let closeCalls = 0;
   const transport: CallTransport = {
@@ -238,7 +238,7 @@ Deno.test("CallSession.start closes the transport when signaling fails", async (
   assertEquals(closeCalls, 1);
 });
 
-Deno.test("CallSession.start answers an incoming call without acquiring or inviting", async () => {
+test("CallSession.start answers an incoming call without acquiring or inviting", async () => {
   const { client, acquired, fakeRoute } = fakeClient();
   let answered = 0;
   let invited = 0;
@@ -271,7 +271,7 @@ Deno.test("CallSession.start answers an incoming call without acquiring or invit
   assertEquals(states, ["acquiring", "connecting", "ringing", "in-call"]);
 });
 
-Deno.test("group sessions join a preacquired route without direct-call signaling", async () => {
+test("group sessions join a preacquired route without direct-call signaling", async () => {
   const { client, acquired, fakeRoute } = fakeClient();
   const calls: string[] = [];
   const transport: CallTransport = {
@@ -312,12 +312,19 @@ Deno.test("group sessions join a preacquired route without direct-call signaling
   await assertRejects(() => failing.start(), Error, "join rejected");
 });
 
-Deno.test("ending during signaling cannot resurrect a call", async () => {
+test("ending during signaling cannot resurrect a call", async () => {
   let finishConnect!: () => void;
+  let closeCount = 0;
   const connecting = new Promise<void>((resolve) => {
     finishConnect = resolve;
   });
-  const transport = { ...recordingTransport(), connect: () => connecting };
+  const transport = {
+    ...recordingTransport(),
+    connect: () => connecting,
+    async close() {
+      closeCount++;
+    },
+  };
   const session = new CallSession(fakeClient().client, { to: "u-p", transport });
   const pending = session.start();
   await Promise.resolve();
@@ -325,9 +332,10 @@ Deno.test("ending during signaling cannot resurrect a call", async () => {
   finishConnect();
   await assertRejects(() => pending, Error, "Call ended");
   assertEquals(session.state, "ended");
+  assertEquals(closeCount, 1);
 });
 
-Deno.test("group session PCM uses simultaneous playout and closes its receive pump", async () => {
+test("group session PCM uses simultaneous playout and closes its receive pump", async () => {
   let finish!: () => void;
   const stopped = new Promise<void>((resolve) => {
     finish = resolve;
@@ -380,7 +388,7 @@ Deno.test("group session PCM uses simultaneous playout and closes its receive pu
   }
 });
 
-Deno.test("group participant departures discard their buffered and late audio", async () => {
+test("group participant departures discard their buffered and late audio", async () => {
   let finish!: () => void;
   const stopped = new Promise<void>((resolve) => {
     finish = resolve;
@@ -465,7 +473,7 @@ Deno.test("group participant departures discard their buffered and late audio", 
   }
 });
 
-Deno.test("CallSession.sendStream pumps PCM through codec → transport", async () => {
+test("CallSession.sendStream pumps PCM through codec → transport", async () => {
   const { client } = fakeClient();
   const transport = recordingTransport();
   const session = new CallSession(client, {
@@ -484,7 +492,7 @@ Deno.test("CallSession.sendStream pumps PCM through codec → transport", async 
   assertEquals(dv.getInt16(4, false), 42);
 });
 
-Deno.test("CallSession.sendStream follows a transport 40ms voice profile", async () => {
+test("CallSession.sendStream follows a transport 40ms voice profile", async () => {
   const { client } = fakeClient();
   const sent: Uint8Array[] = [];
   const encodedLengths: number[] = [];
@@ -537,7 +545,7 @@ Deno.test("CallSession.sendStream follows a transport 40ms voice profile", async
   assertEquals(encoderOptions?.vbr, false);
 });
 
-Deno.test("CallSession.sendStream rejects when not in-call", async () => {
+test("CallSession.sendStream rejects when not in-call", async () => {
   const { client } = fakeClient();
   const session = new CallSession(client, { to: "u-p", transport: recordingTransport() });
   await assertRejects(
@@ -547,7 +555,7 @@ Deno.test("CallSession.sendStream rejects when not in-call", async () => {
   );
 });
 
-Deno.test("CallSession.received yields decoded peer PCM frames", async () => {
+test("CallSession.received yields decoded peer PCM frames", async () => {
   const { client } = fakeClient();
   // Build a transport that emits 3 fake packets
   const transport: CallTransport = {
@@ -578,7 +586,7 @@ Deno.test("CallSession.received yields decoded peer PCM frames", async () => {
   assertEquals(collected, [10, 20, 30]);
 });
 
-Deno.test("CallSession.received skips one malformed audio packet and keeps receiving", async () => {
+test("CallSession.received skips one malformed audio packet and keeps receiving", async () => {
   const { client } = fakeClient();
   const good = new Uint8Array(8);
   new DataView(good.buffer).setUint32(0, 1, false);
@@ -605,7 +613,7 @@ Deno.test("CallSession.received skips one malformed audio packet and keeps recei
   assertEquals(collected, [77]);
 });
 
-Deno.test("CallSession.receiveInto pipes to AudioSink + closes on stream end", async () => {
+test("CallSession.receiveInto pipes to AudioSink + closes on stream end", async () => {
   const { client } = fakeClient();
   const transport: CallTransport = {
     connect() {
@@ -634,7 +642,7 @@ Deno.test("CallSession.receiveInto pipes to AudioSink + closes on stream end", a
   assertEquals(sink.frames[0].samples[0], 99);
 });
 
-Deno.test("CallSession.receiveInto skips one malformed audio packet and keeps receiving", async () => {
+test("CallSession.receiveInto skips one malformed audio packet and keeps receiving", async () => {
   const { client } = fakeClient();
   const good = new Uint8Array(8);
   new DataView(good.buffer).setUint32(0, 1, false);
@@ -662,7 +670,7 @@ Deno.test("CallSession.receiveInto skips one malformed audio packet and keeps re
   assertEquals(sink.frames[0].samples[0], 88);
 });
 
-Deno.test("CallSession.end transitions to ending → ended + emits 'ended'", async () => {
+test("CallSession.end transitions to ending → ended + emits 'ended'", async () => {
   const { client } = fakeClient();
   const transport = recordingTransport();
   const session = new CallSession(client, { to: "u-p", transport });
@@ -677,7 +685,7 @@ Deno.test("CallSession.end transitions to ending → ended + emits 'ended'", asy
   assert(transport.closed);
 });
 
-Deno.test("CallSession.end shares cleanup across concurrent callers", async () => {
+test("CallSession.end shares cleanup across concurrent callers", async () => {
   const { client } = fakeClient();
   let transportCloseCalls = 0;
   let encoderCloseCalls = 0;
@@ -723,7 +731,7 @@ Deno.test("CallSession.end shares cleanup across concurrent callers", async () =
   assertEquals(endedReasons, ["first"]);
 });
 
-Deno.test("stub transport throws on connect", async () => {
+test("stub transport throws on connect", async () => {
   const { client } = fakeClient();
   const session = new CallSession(client, { to: "u-p" }); // no transport
   const errors: Error[] = [];
@@ -733,7 +741,7 @@ Deno.test("stub transport throws on connect", async () => {
   assertEquals(errors.length, 1);
 });
 
-Deno.test("CallSession.sendFile uses caller-supplied decoder", async () => {
+test("CallSession.sendFile uses caller-supplied decoder", async () => {
   const { client } = fakeClient();
   const transport = recordingTransport();
   const session = new CallSession(client, {

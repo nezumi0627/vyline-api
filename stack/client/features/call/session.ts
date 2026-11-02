@@ -117,6 +117,7 @@ export class CallSession extends TypedEventEmitter<CallSessionEvents> {
   #sendAbort?: AbortController;
   #receiveSink?: AudioSink;
   #endTask?: Promise<void>;
+  #transportClose?: Promise<void>;
   #startTask?: Promise<LINETypes.CallRoute | LINETypes.GroupCallRoute>;
   #groupMixer?: GroupAudioMixer;
   #participants?: ConferenceMember[];
@@ -298,11 +299,7 @@ export class CallSession extends TypedEventEmitter<CallSessionEvents> {
       this.emit("connected", this.#route);
       return this.#route;
     } catch (e) {
-      try {
-        await this.#transport.close();
-      } catch {
-        /* preserve the signaling error */
-      }
+      await this.#closeTransport();
       const err = e instanceof Error ? e : new Error(String(e));
       if (this.#state === "ending" || this.#state === "ended") throw err;
       this.#setState("failed");
@@ -448,11 +445,7 @@ export class CallSession extends TypedEventEmitter<CallSessionEvents> {
     this.#endTask = Promise.resolve().then(async () => {
       this.#setState("ending");
       this.#sendAbort?.abort();
-      try {
-        await this.#transport.close();
-      } catch {
-        /* */
-      }
+      await this.#closeTransport();
       this.#encoder?.close?.();
       this.#localVideoEnabled = false;
       this.#remoteVideoEnabled = false;
@@ -469,6 +462,14 @@ export class CallSession extends TypedEventEmitter<CallSessionEvents> {
       this.emit("ended", reason);
     });
     return this.#endTask;
+  }
+
+  async #closeTransport(): Promise<void> {
+    this.#transportClose ??= this.#transport.close().then(
+      () => undefined,
+      () => undefined,
+    );
+    await this.#transportClose;
   }
 }
 

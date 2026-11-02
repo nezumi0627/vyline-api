@@ -33,6 +33,7 @@ export interface AndromedaTransportOpts {
 }
 
 type UdpSocket = DgramSocket;
+const MAX_QUEUED_RTP_PACKETS = 64;
 
 /** Endpoint extracted from a CallRoute. SIP signaling + media live on
  *  the same UDP host:port for LINE; SRTP packets flow back over RTP-
@@ -71,9 +72,14 @@ function routeEndpoint(r: LINETypes.CallRoute): CallRouteEndpoint {
 export class AndromedaTransport implements CallTransport {
   #opts: AndromedaTransportOpts;
   #sock?: UdpSocket;
+  #closed = false;
   #route?: LINETypes.CallRoute;
   #cseq = 0;
-  #pending: ((msg: Uint8Array) => void)[] = [];
+  #pending: Array<{
+    resolve: (msg: Uint8Array) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }> = [];
   #sipFrom?: string;
   #sipFromTag?: string;
   #callId?: string;
@@ -113,12 +119,18 @@ export class AndromedaTransport implements CallTransport {
         (u8[0] === 0x53 /* S */ || (/[A-Z]/.test(String.fromCharCode(u8[0])) && u8.includes(0x20)));
       if (isSip) {
         const w = this.#pending.shift();
-        if (w) w(u8);
+        if (w) {
+          clearTimeout(w.timer);
+          w.resolve(u8);
+        }
       } else if (this.#rtp && rinfo.port === this.#rtp.port) {
         this.#enqueueRtp(u8);
       } else {
         const w = this.#pending.shift();
-        if (w) w(u8);
+        if (w) {
+          clearTimeout(w.timer);
+          w.resolve(u8);
+        }
       }
     });
     await this.register();
@@ -127,7 +139,10 @@ export class AndromedaTransport implements CallTransport {
   #enqueueRtp(p: Uint8Array) {
     const w = this.#rtpWaiters.shift();
     if (w) w(p);
-    else this.#rtpQueue.push(p);
+    else {
+      if (this.#rtpQueue.length >= MAX_QUEUED_RTP_PACKETS) this.#rtpQueue.shift();
+      this.#rtpQueue.push(p);
+    }
   }
   #takeRtp(): Promise<Uint8Array | null> {
     if (this.#rtpQueue.length) return Promise.resolve(this.#rtpQueue.shift()!);
@@ -135,6 +150,8 @@ export class AndromedaTransport implements CallTransport {
   }
 
   async close(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
     try {
       await this.bye();
     } catch {
@@ -142,7 +159,23 @@ export class AndromedaTransport implements CallTransport {
     }
     if (this.#refreshTimer !== undefined) clearTimeout(this.#refreshTimer);
     if (this.#keepaliveTimer !== undefined) clearTimeout(this.#keepaliveTimer);
-    await new Promise<void>((res) => this.#sock?.close(() => res()));
+    for (const pending of this.#pending.splice(0)) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("transport closed"));
+    }
+    for (const waiter of this.#rtpWaiters.splice(0)) waiter(null);
+    this.#rtpQueue.length = 0;
+    const sock = this.#sock;
+    this.#sock = undefined;
+    if (sock) {
+      await new Promise<void>((res) => {
+        try {
+          sock.close(() => res());
+        } catch {
+          res();
+        }
+      });
+    }
   }
 
   /** Send SIP BYE to terminate an established dialog. Best-effort. */
@@ -570,12 +603,21 @@ export class AndromedaTransport implements CallTransport {
 
   #receive(): Promise<Uint8Array> {
     const timeout = this.#opts.timeoutMs ?? 5000;
-    return new Promise<Uint8Array>((res, rj) => {
-      const t = setTimeout(() => rj(new Error("SIP receive timeout")), timeout);
-      this.#pending.push((buf) => {
-        clearTimeout(t);
-        res(buf);
-      });
+    return new Promise<Uint8Array>((resolve, reject) => {
+      if (this.#closed) {
+        reject(new Error("transport closed"));
+        return;
+      }
+      const pending = {
+        resolve,
+        reject,
+        timer: setTimeout(() => {
+          const index = this.#pending.indexOf(pending);
+          if (index >= 0) this.#pending.splice(index, 1);
+          reject(new Error("SIP receive timeout"));
+        }, timeout),
+      };
+      this.#pending.push(pending);
     });
   }
 }
