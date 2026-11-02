@@ -149,6 +149,7 @@ public class MemScan {
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
     timeout: 120_000,
+    windowsHide: true,
   });
   if (r.error) {
     console.error("memory scan failed:", r.error.message);

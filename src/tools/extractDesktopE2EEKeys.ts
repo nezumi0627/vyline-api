@@ -42,7 +42,7 @@ function dumpPrivateKeyWindows(rawOut: string): string {
   const r = spawnSync(
     "powershell.exe",
     ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, "-OutFile", rawOut],
-    { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024, timeout: 180_000 },
+    { encoding: "utf-8", maxBuffer: 64 * 1024 * 1024, timeout: 180_000, windowsHide: true },
   );
   if (r.error) throw r.error;
   if (r.status !== 0) {

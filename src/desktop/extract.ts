@@ -121,6 +121,7 @@ $hits | ForEach-Object { $_ }
     encoding: "utf8",
     timeout: 60_000,
     maxBuffer: 8 * 1024 * 1024,
+    windowsHide: true,
   });
 
   const notes: string[] = [];
