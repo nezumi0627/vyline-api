@@ -16,7 +16,8 @@ import type { DesktopProfile } from "./types.js";
 
 const _here = dirname(fileURLToPath(import.meta.url));
 const FALLBACK_PATH =
-  process.env.VYLINE_DESKTOP_PROFILE_FALLBACK ?? join(_here, "../../data/desktop-profile.fallback.json");
+  process.env.VYLINE_DESKTOP_PROFILE_FALLBACK ??
+  join(_here, "../../data/desktop-profile.fallback.json");
 
 export function defaultVylineDataDir(override?: string): string {
   if (override) return override;
