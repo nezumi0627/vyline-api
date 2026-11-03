@@ -188,6 +188,59 @@ export function verifyWxSqlite3Passphrase(
   }
 }
 
+/** Verify an already-derived wxSQLite3 16-byte base key against page one. */
+export function verifyWxSqlite3BaseKey(
+  file: Buffer,
+  baseKey: Buffer,
+  opts?: { pageSize?: number },
+): boolean {
+  const encodedPageSize = file.length >= 18 ? file.readUInt16BE(16) : 0;
+  const pageSize = opts?.pageSize ?? (encodedPageSize === 1 ? 65536 : encodedPageSize);
+  if (baseKey.length !== 16 || file.length < pageSize) return false;
+  let derivedKey: Buffer | undefined;
+  let page: Buffer | undefined;
+  let encryptedMeta: Buffer | undefined;
+  let clearMeta: Buffer | undefined;
+  let body: Buffer | undefined;
+  try {
+    const header = file.subarray(16, 24);
+    const encodedPageSize = header.readUInt16BE(0);
+    const actualPageSize = encodedPageSize === 1 ? 65536 : encodedPageSize;
+    if (
+      actualPageSize !== pageSize ||
+      ![512, 1024, 2048, 4096, 8192, 16384, 32768, 65536].includes(actualPageSize) ||
+      ![1, 2].includes(header[2]!) ||
+      ![1, 2].includes(header[3]!) ||
+      header[5] !== 64 ||
+      header[6] !== 32 ||
+      header[7] !== 32
+    )
+      return false;
+
+    derivedKey = pageKey128(baseKey, 1);
+    const iv = pageIv(1);
+    page = Buffer.from(file.subarray(0, pageSize));
+    encryptedMeta = Buffer.from(page.subarray(8, 16));
+    clearMeta = Buffer.from(page.subarray(16, 24));
+    encryptedMeta.copy(page, 16);
+    body = aes128CbcDecrypt(derivedKey, iv, page.subarray(16));
+    const valid = body.subarray(0, 8).equals(clearMeta);
+    const btreeType = body[84];
+    return (
+      valid &&
+      (btreeType === 0x02 || btreeType === 0x05 || btreeType === 0x0a || btreeType === 0x0d)
+    );
+  } catch {
+    return false;
+  } finally {
+    derivedKey?.fill(0);
+    page?.fill(0);
+    encryptedMeta?.fill(0);
+    clearMeta?.fill(0);
+    body?.fill(0);
+  }
+}
+
 export function decryptWxSqlite3File(
   file: Buffer,
   passphrase: Buffer,
@@ -239,6 +292,50 @@ export function decryptWxSqlite3File(
   if (pageCount * pageSize < file.length) {
     file.copy(out, pageCount * pageSize, pageCount * pageSize);
   }
+  return out;
+}
+
+/** Decrypt a wxSQLite3 database with an already-derived 16-byte base key. */
+export function decryptWxSqlite3FileWithBaseKey(
+  file: Buffer,
+  baseKey: Buffer,
+  requestedPageSize = 0,
+): Buffer {
+  if (baseKey.length !== 16) throw new Error("wxSQLite3 base key must be exactly 16 bytes");
+  let pageSize = requestedPageSize;
+  if (!pageSize) {
+    const encoded = file.readUInt16BE(16);
+    pageSize = encoded === 1 ? 65536 : encoded;
+  }
+  if (!verifyWxSqlite3BaseKey(file, baseKey, { pageSize })) {
+    throw new Error("wxSQLite3 page-one verification failed for the supplied base key");
+  }
+
+  const out = Buffer.alloc(file.length);
+  const pageCount = Math.floor(file.length / pageSize);
+  for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+    const offset = (pageNumber - 1) * pageSize;
+    const encryptedPage = Buffer.from(file.subarray(offset, offset + pageSize));
+    const key = pageKey128(baseKey, pageNumber);
+    const iv = pageIv(pageNumber);
+    if (pageNumber === 1) {
+      const clearMeta = Buffer.from(file.subarray(16, 24));
+      file.copy(encryptedPage, 16, 8, 16);
+      const body = aes128CbcDecrypt(key, iv, encryptedPage.subarray(16));
+      body.copy(out, 16);
+      SQLITE_HEADER.copy(out, 0);
+      clearMeta.copy(out, 16);
+      body.fill(0);
+    } else {
+      const plain = aes128CbcDecrypt(key, iv, encryptedPage);
+      plain.copy(out, offset);
+      plain.fill(0);
+    }
+    key.fill(0);
+    encryptedPage.fill(0);
+  }
+  const remainder = pageCount * pageSize;
+  if (remainder < file.length) file.copy(out, remainder, remainder);
   return out;
 }
 
