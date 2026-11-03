@@ -162,12 +162,12 @@ test("memory scanning accepts only the consented local LINE process and does not
   try {
     const result = spawnSync(
       process.execPath,
-      [toolPath, "--edb", dbPath, "--out-dir", join(dir, "out"), "--accept-risk"],
+      [toolPath, "--edb", dbPath, "--out-dir", join(dir, "out"), "--pid", "4", "--accept-risk"],
       { encoding: "utf8", timeout: 130_000 },
     );
     const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
     expect(result.status).not.toBe(0);
-    expect(output).toContain("LINE Desktopのプロセスが見つかりません");
+    expect(output).toContain("指定PIDはLINE Desktopではありません");
     expect(output).not.toMatch(/[0-9a-f]{32}/i);
     expect(readdirSync(dir)).not.toContain("passphrase-candidates.json");
   } finally {

@@ -1,6 +1,7 @@
 import { createCipheriv } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import {
+  applyWxSqlite3WalWithBaseKey,
   decryptWxSqlite3File,
   decryptWxSqlite3FileWithBaseKey,
   deriveWxSqlite3BaseKey128,
@@ -20,7 +21,7 @@ function encryptCbc(key: Buffer, iv: Buffer, data: Buffer): Buffer {
   return Buffer.concat([cipher.update(data), cipher.final()]);
 }
 
-function makeEncryptedDatabase(): Buffer {
+function makeEncryptedDatabase(pageMarker = 0): Buffer {
   const baseKey = deriveWxSqlite3BaseKey128(PASSPHRASE);
   const page = Buffer.alloc(PAGE_SIZE);
   SQLITE_HEADER.copy(page);
@@ -32,6 +33,7 @@ function makeEncryptedDatabase(): Buffer {
   page[22] = 32;
   page[23] = 32;
   page[100] = 0x0d; // leaf table b-tree page
+  page[200] = pageMarker;
   page.writeUInt16BE(0, 101); // no cells
   page.writeUInt16BE(PAGE_SIZE, 103); // cell content starts at page end
 
@@ -43,6 +45,37 @@ function makeEncryptedDatabase(): Buffer {
   encrypted.copy(encrypted, 8, 16, 24);
   page.subarray(16, 24).copy(encrypted, 16);
   return encrypted;
+}
+
+function makeWal(page: Buffer, pageSize: number): Buffer {
+  const wal = Buffer.alloc(32 + 24 + pageSize);
+  wal.writeUInt32BE(0x377f0682, 0);
+  wal.writeUInt32BE(3007000, 4);
+  wal.writeUInt32BE(pageSize, 8);
+  wal.writeUInt32BE(1, 12);
+  wal.writeUInt32BE(0x12345678, 16);
+  wal.writeUInt32BE(0x90abcdef, 20);
+  const checksum = (offset: number, length: number, seed: [number, number]) => {
+    let [s0, s1] = seed;
+    for (let i = offset; i < offset + length; i += 8) {
+      s0 = (s0 + wal.readUInt32LE(i) + s1) >>> 0;
+      s1 = (s1 + wal.readUInt32LE(i + 4) + s0) >>> 0;
+    }
+    return [s0, s1] as [number, number];
+  };
+  let sums = checksum(0, 24, [0, 0]);
+  wal.writeUInt32BE(sums[0], 24);
+  wal.writeUInt32BE(sums[1], 28);
+  wal.writeUInt32BE(1, 32);
+  wal.writeUInt32BE(1, 36);
+  wal.writeUInt32BE(0x12345678, 40);
+  wal.writeUInt32BE(0x90abcdef, 44);
+  page.copy(wal, 56);
+  sums = checksum(32, 8, sums);
+  sums = checksum(56, pageSize, sums);
+  wal.writeUInt32BE(sums[0], 48);
+  wal.writeUInt32BE(sums[1], 52);
+  return wal;
 }
 
 function makeTwoPageEncryptedDatabase(): Buffer {
@@ -126,6 +159,33 @@ describe("wxSQLite3 page cipher compatibility", () => {
     const encrypted = makeEncryptedDatabase();
     expect(verifyWxSqlite3BaseKey(encrypted, Buffer.alloc(16, 0x7f), { pageSize: PAGE_SIZE })).toBe(
       false,
+    );
+  });
+
+  test("applies committed encrypted WAL pages without touching the input buffers", () => {
+    const baseKey = deriveWxSqlite3BaseKey128(PASSPHRASE);
+    const mainEncrypted = makeEncryptedDatabase(0x11);
+    const mainPlain = decryptWxSqlite3FileWithBaseKey(mainEncrypted, baseKey, PAGE_SIZE);
+    const walPage = makeEncryptedDatabase(0x5a);
+    const wal = makeWal(walPage, PAGE_SIZE);
+    const result = applyWxSqlite3WalWithBaseKey(mainPlain, wal, baseKey);
+
+    expect(result.validFrameCount).toBe(1);
+    expect(result.committedFrameCount).toBe(1);
+    expect(result.transactionCount).toBe(1);
+    expect(result.updatedPageCount).toBe(1);
+    expect(result.database[200]).toBe(0x5a);
+    expect(mainPlain[200]).toBe(0x11);
+    expect(wal[56]).toBe(walPage[0]);
+  });
+
+  test("rejects WAL files with an invalid header checksum", () => {
+    const baseKey = deriveWxSqlite3BaseKey128(PASSPHRASE);
+    const mainPlain = decryptWxSqlite3FileWithBaseKey(makeEncryptedDatabase(), baseKey, PAGE_SIZE);
+    const wal = makeWal(makeEncryptedDatabase(), PAGE_SIZE);
+    wal[24] = wal[24]! ^ 0xff;
+    expect(() => applyWxSqlite3WalWithBaseKey(mainPlain, wal, baseKey)).toThrow(
+      "WAL header checksum is invalid",
     );
   });
 });

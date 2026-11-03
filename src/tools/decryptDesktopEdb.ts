@@ -5,14 +5,15 @@
  *
  * 手順:
  * 1. 明示同意後、指定した LINE.exe の _Codec baseKey 候補をメモリから収集
- * 2. .edb を共有オープンで読み取り
- * 3. 候補で page1 検証 → 成功したら .sqlite に書き出し
+ * 2. .edb と任意の WAL を共有オープンで読み取り
+ * 3. 候補で page1 検証 → 成功したら WAL を適用して .sqlite に書き出し
  *
  * Usage:
  *   bun run src/tools/decryptDesktopEdb.ts
  *   bun run src/tools/decryptDesktopEdb.ts --pid <LINE.exe PID> --accept-risk
  *   bun run src/tools/decryptDesktopEdb.ts --passphrase <32hex>
  *   bun run src/tools/decryptDesktopEdb.ts --edb <path> --out <path>
+ *   bun run src/tools/decryptDesktopEdb.ts --pid <pid> --accept-risk --include-wal --summary-only
  */
 
 import {
@@ -24,14 +25,18 @@ import {
   readSync,
   closeSync,
   fstatSync,
+  statSync,
 } from "node:fs";
 import { join, basename, dirname, resolve as resolvePath } from "node:path";
 import { homedir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { createInterface } from "node:readline/promises";
+import { Database } from "bun:sqlite";
 import {
+  applyWxSqlite3WalWithBaseKey,
   decryptWxSqlite3File,
   decryptWxSqlite3FileWithBaseKey,
+  deriveWxSqlite3BaseKey128,
   isLikelyWxSqlite3,
   tryPassphraseVariants,
   verifyWxSqlite3BaseKey,
@@ -81,9 +86,65 @@ function readShared(path: string): Buffer {
       if (n <= 0) break;
       off += n;
     }
+    if (off !== st.size) throw new Error("File changed or could not be read completely");
     return buf.subarray(0, off);
   } finally {
     closeSync(fd);
+  }
+}
+
+function readStableEdbAndWal(edbPath: string): { database: Buffer; wal: Buffer | null } {
+  const walPath = `${edbPath}-wal`;
+  const edbBefore = statSync(edbPath);
+  const walExistsBefore = existsSync(walPath);
+  const walBefore = walExistsBefore ? statSync(walPath) : null;
+  const database = readShared(edbPath);
+  let wal: Buffer | null = null;
+  try {
+    if (walExistsBefore) wal = readShared(walPath);
+    const edbAfter = statSync(edbPath);
+    const walExistsAfter = existsSync(walPath);
+    const walAfter = walExistsAfter ? statSync(walPath) : null;
+    const edbStable = edbBefore.size === edbAfter.size && edbBefore.mtimeMs === edbAfter.mtimeMs;
+    const walStable =
+      walExistsBefore === walExistsAfter &&
+      (!walBefore ||
+        !walAfter ||
+        (walBefore.size === walAfter.size && walBefore.mtimeMs === walAfter.mtimeMs));
+    if (!edbStable || !walStable)
+      throw new Error("EDB/WAL changed during the read; retry when LINE is idle");
+    return { database, wal };
+  } catch (error) {
+    database.fill(0);
+    wal?.fill(0);
+    throw error;
+  }
+}
+
+function summarizePlainDatabase(data: Buffer) {
+  const snapshot = Buffer.from(data);
+  let db: Database | undefined;
+  try {
+    // The decrypted file is an offline snapshot; force rollback-journal mode in this memory copy
+    // so SQLite does not look for an adjacent -shm/-wal file.
+    snapshot[18] = 1;
+    snapshot[19] = 1;
+    db = Database.deserialize(snapshot, true);
+    const integrity = db.query("PRAGMA integrity_check").get() as { integrity_check: string };
+    const { n, oldest, newest } = db
+      .query(
+        "SELECT COUNT(*) AS n, MIN(_createdTime) AS oldest, MAX(_createdTime) AS newest FROM _message",
+      )
+      .get() as { n: number; oldest: number | null; newest: number | null };
+    return {
+      integrity: integrity.integrity_check,
+      messageCount: n,
+      oldestCreatedTimeMs: oldest,
+      newestCreatedTimeMs: newest,
+    };
+  } finally {
+    db?.close();
+    snapshot.fill(0);
   }
 }
 
@@ -279,8 +340,13 @@ async function main() {
     process.exit(1);
   }
   console.log("Reading encrypted EDB file.");
-
-  const file = readShared(edbPath);
+  const includeWal = process.argv.includes("--include-wal");
+  const summaryOnly = process.argv.includes("--summary-only");
+  const snapshot = includeWal
+    ? readStableEdbAndWal(edbPath)
+    : { database: readShared(edbPath), wal: null };
+  const file = snapshot.database;
+  const wal = snapshot.wal;
   console.log("size:", file.length, "wxSQLite3-like:", isLikelyWxSqlite3(file));
   console.log("hdr16-24:", file.subarray(16, 24).toString("hex"));
 
@@ -308,6 +374,8 @@ async function main() {
   }
   let hit: { key: Buffer; quirk: boolean; pageSize: number; baseKey: boolean } | null = null;
   let plain: Buffer | undefined;
+  let walPlain: Buffer | undefined;
+  let baseKey: Buffer | undefined;
   try {
     console.log("key candidates found:", candidates.length);
     if (candidates.length === 0) {
@@ -365,6 +433,30 @@ async function main() {
           lineQuirk: hit.quirk,
           pageSize: hit.pageSize,
         });
+    if (includeWal && wal) {
+      baseKey = hit.baseKey ? Buffer.from(hit.key) : deriveWxSqlite3BaseKey128(hit.key, hit.quirk);
+      const applied = applyWxSqlite3WalWithBaseKey(plain, wal, baseKey);
+      walPlain = applied.database;
+      console.log(
+        "WAL:",
+        JSON.stringify({
+          present: true,
+          validFrames: applied.validFrameCount,
+          committedFrames: applied.committedFrameCount,
+          transactions: applied.transactionCount,
+          updatedPages: applied.updatedPageCount,
+          pageSize: applied.pageSize,
+        }),
+      );
+    } else if (includeWal) {
+      console.log("WAL:", JSON.stringify({ present: false }));
+    }
+    const database = walPlain ?? plain;
+    if (summaryOnly) {
+      const summary = summarizePlainDatabase(database);
+      console.log("database summary:", JSON.stringify(summary));
+      return;
+    }
     const outPath = resolvePath(
       arg("out") ?? join(destDir, basename(edbPath).replace(/\.edb$/i, ".sqlite")),
     );
@@ -380,14 +472,17 @@ async function main() {
       return;
     }
     mkdirSync(dirname(outPath), { recursive: true });
-    writeFileSync(outPath, plain, { flag: "wx" });
+    writeFileSync(outPath, database, { flag: "wx" });
     console.log("decrypted →", outPath);
-    console.log("header:", plain.subarray(0, 16).toString("utf8"));
+    console.log("header:", database.subarray(0, 16).toString("utf8"));
   } finally {
     for (const candidate of candidates) candidate.fill(0);
     hit?.key.fill(0);
+    baseKey?.fill(0);
+    wal?.fill(0);
     file.fill(0);
     plain?.fill(0);
+    walPlain?.fill(0);
   }
 }
 

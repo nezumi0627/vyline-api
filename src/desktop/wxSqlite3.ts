@@ -315,28 +315,172 @@ export function decryptWxSqlite3FileWithBaseKey(
   const pageCount = Math.floor(file.length / pageSize);
   for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
     const offset = (pageNumber - 1) * pageSize;
-    const encryptedPage = Buffer.from(file.subarray(offset, offset + pageSize));
-    const key = pageKey128(baseKey, pageNumber);
-    const iv = pageIv(pageNumber);
-    if (pageNumber === 1) {
-      const clearMeta = Buffer.from(file.subarray(16, 24));
-      file.copy(encryptedPage, 16, 8, 16);
-      const body = aes128CbcDecrypt(key, iv, encryptedPage.subarray(16));
-      body.copy(out, 16);
-      SQLITE_HEADER.copy(out, 0);
-      clearMeta.copy(out, 16);
-      body.fill(0);
-    } else {
-      const plain = aes128CbcDecrypt(key, iv, encryptedPage);
-      plain.copy(out, offset);
-      plain.fill(0);
-    }
-    key.fill(0);
-    encryptedPage.fill(0);
+    const plainPage = decryptWxSqlite3PageWithBaseKey(
+      file.subarray(offset, offset + pageSize),
+      baseKey,
+      pageNumber,
+      pageSize,
+    );
+    plainPage.copy(out, offset);
+    plainPage.fill(0);
   }
   const remainder = pageCount * pageSize;
   if (remainder < file.length) file.copy(out, remainder, remainder);
   return out;
+}
+
+/** Decrypt one encrypted database or WAL page using its 1-based page number. */
+export function decryptWxSqlite3PageWithBaseKey(
+  encryptedPage: Buffer,
+  baseKey: Buffer,
+  pageNumber: number,
+  pageSize: number,
+): Buffer {
+  if (baseKey.length !== 16) throw new Error("wxSQLite3 base key must be exactly 16 bytes");
+  if (!Number.isSafeInteger(pageNumber) || pageNumber < 1)
+    throw new Error("Invalid SQLite page number");
+  if (encryptedPage.length !== pageSize) throw new Error("Encrypted page has an unexpected size");
+
+  const key = pageKey128(baseKey, pageNumber);
+  const iv = pageIv(pageNumber);
+  try {
+    if (pageNumber !== 1) return aes128CbcDecrypt(key, iv, encryptedPage);
+    if (!verifyWxSqlite3BaseKey(encryptedPage, baseKey, { pageSize })) {
+      throw new Error("wxSQLite3 page-one verification failed");
+    }
+    const clearMeta = Buffer.from(encryptedPage.subarray(16, 24));
+    const firstBody = Buffer.from(encryptedPage.subarray(8, 16));
+    const restBody = Buffer.from(encryptedPage.subarray(24));
+    const cipherBody = Buffer.concat([firstBody, restBody]);
+    let body: Buffer | undefined;
+    try {
+      body = aes128CbcDecrypt(key, iv, cipherBody);
+      const plainPage = Buffer.alloc(pageSize);
+      SQLITE_HEADER.copy(plainPage, 0);
+      body.copy(plainPage, 16);
+      clearMeta.copy(plainPage, 16);
+      return plainPage;
+    } finally {
+      clearMeta.fill(0);
+      firstBody.fill(0);
+      restBody.fill(0);
+      cipherBody.fill(0);
+      body?.fill(0);
+    }
+  } finally {
+    key.fill(0);
+    iv.fill(0);
+  }
+}
+
+export interface WxSqlite3WalApplyResult {
+  database: Buffer;
+  validFrameCount: number;
+  committedFrameCount: number;
+  transactionCount: number;
+  updatedPageCount: number;
+  pageSize: number;
+}
+
+/** Validate a SQLite WAL and apply its latest committed encrypted pages in memory. */
+export function applyWxSqlite3WalWithBaseKey(
+  plaintextDatabase: Buffer,
+  encryptedWal: Buffer,
+  baseKey: Buffer,
+): WxSqlite3WalApplyResult {
+  if (baseKey.length !== 16) throw new Error("wxSQLite3 base key must be exactly 16 bytes");
+  if (encryptedWal.length < 32) throw new Error("WAL header is incomplete");
+
+  const magic = encryptedWal.readUInt32BE(0);
+  if (magic !== 0x377f0682 && magic !== 0x377f0683) throw new Error("Invalid SQLite WAL magic");
+  if (encryptedWal.readUInt32BE(4) !== 3007000) throw new Error("Unsupported SQLite WAL format");
+  const pageSize = encryptedWal.readUInt32BE(8);
+  const dbPageSize = plaintextDatabase.readUInt16BE(16);
+  const actualDbPageSize = dbPageSize === 1 ? 65536 : dbPageSize;
+  if (pageSize !== actualDbPageSize) throw new Error("WAL and database page sizes do not match");
+  // The WAL has a 32-byte header followed by complete 24-byte frame headers and pages.
+  if ((encryptedWal.length - 32) % (24 + pageSize) !== 0) {
+    throw new Error("WAL contains a partial frame");
+  }
+
+  const bigEndianChecksumWords = (magic & 1) !== 0;
+  const readChecksumWord = (buf: Buffer, offset: number) =>
+    bigEndianChecksumWords ? buf.readUInt32BE(offset) : buf.readUInt32LE(offset);
+  const checksum = (buf: Buffer, offset: number, length: number, seed: [number, number]) => {
+    let s0 = seed[0] >>> 0;
+    let s1 = seed[1] >>> 0;
+    for (let i = offset; i < offset + length; i += 8) {
+      s0 = (s0 + readChecksumWord(buf, i) + s1) >>> 0;
+      s1 = (s1 + readChecksumWord(buf, i + 4) + s0) >>> 0;
+    }
+    return [s0, s1] as [number, number];
+  };
+
+  let running = checksum(encryptedWal, 0, 24, [0, 0]);
+  if (
+    encryptedWal.readUInt32BE(24) !== running[0] ||
+    encryptedWal.readUInt32BE(28) !== running[1]
+  ) {
+    throw new Error("WAL header checksum is invalid");
+  }
+  const salt1 = encryptedWal.readUInt32BE(16);
+  const salt2 = encryptedWal.readUInt32BE(20);
+  const frameSize = 24 + pageSize;
+  const frameCount = (encryptedWal.length - 32) / frameSize;
+  const validFrames: Array<{ pageNumber: number; dbSize: number; dataOffset: number }> = [];
+  let committedFrameCount = 0;
+  let transactionCount = 0;
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+    const frameOffset = 32 + frameIndex * frameSize;
+    const pageNumber = encryptedWal.readUInt32BE(frameOffset);
+    const dbSize = encryptedWal.readUInt32BE(frameOffset + 4);
+    if (
+      pageNumber === 0 ||
+      encryptedWal.readUInt32BE(frameOffset + 8) !== salt1 ||
+      encryptedWal.readUInt32BE(frameOffset + 12) !== salt2
+    ) {
+      break;
+    }
+    running = checksum(encryptedWal, frameOffset, 8, running);
+    running = checksum(encryptedWal, frameOffset + 24, pageSize, running);
+    if (
+      encryptedWal.readUInt32BE(frameOffset + 16) !== running[0] ||
+      encryptedWal.readUInt32BE(frameOffset + 20) !== running[1]
+    ) {
+      break;
+    }
+    validFrames.push({ pageNumber, dbSize, dataOffset: frameOffset + 24 });
+    if (dbSize > 0) {
+      committedFrameCount = validFrames.length;
+      transactionCount++;
+    }
+  }
+  if (committedFrameCount === 0) throw new Error("WAL contains no valid committed transaction");
+
+  const finalDbSize = validFrames[committedFrameCount - 1]!.dbSize;
+  const merged = Buffer.alloc(finalDbSize * pageSize);
+  plaintextDatabase.copy(merged, 0, 0, Math.min(plaintextDatabase.length, merged.length));
+  const latestPages = new Map<number, number>();
+  for (let index = 0; index < committedFrameCount; index++) {
+    latestPages.set(validFrames[index]!.pageNumber, index);
+  }
+  for (const [pageNumber, frameIndex] of latestPages) {
+    if (pageNumber > finalDbSize) continue;
+    const frame = validFrames[frameIndex]!;
+    const encryptedPage = encryptedWal.subarray(frame.dataOffset, frame.dataOffset + pageSize);
+    const plainPage = decryptWxSqlite3PageWithBaseKey(encryptedPage, baseKey, pageNumber, pageSize);
+    plainPage.copy(merged, (pageNumber - 1) * pageSize);
+    plainPage.fill(0);
+  }
+
+  return {
+    database: merged,
+    validFrameCount: validFrames.length,
+    committedFrameCount,
+    transactionCount,
+    updatedPageCount: latestPages.size,
+    pageSize,
+  };
 }
 
 /** Try passphrase as 32-char hex ASCII or 16 raw bytes */
