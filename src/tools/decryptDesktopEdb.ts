@@ -486,7 +486,96 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export interface DesktopEdbMemoryRestoreResult {
+  database: Buffer;
+  messageCount: number;
+  oldestCreatedTimeMs: number | null;
+  newestCreatedTimeMs: number | null;
+  wal: {
+    present: boolean;
+    validFrames: number;
+    committedFrames: number;
+    transactions: number;
+    updatedPages: number;
+  };
+}
+
+/**
+ * Decrypt the selected local Desktop database and apply its committed WAL in memory.
+ * Callers must obtain explicit user consent before setting `acceptedMemoryScan`.
+ */
+export function decryptDesktopEdbSnapshot(
+  edbPath: string,
+  requestedPid: number,
+  acceptedMemoryScan: boolean,
+): DesktopEdbMemoryRestoreResult {
+  if (!acceptedMemoryScan)
+    throw new Error("Explicit consent is required before scanning process memory");
+  if (process.platform !== "win32")
+    throw new Error("Desktop EDB restore is supported on Windows only");
+  if (!Number.isSafeInteger(requestedPid) || requestedPid < 0)
+    throw new Error("Invalid LINE Desktop process selector");
+  if (!existsSync(edbPath)) throw new Error("LINE Desktop database was not found");
+
+  const { database: encrypted, wal } = readStableEdbAndWal(edbPath);
+  const scan = scanPassphrasesFromMemory(requestedPid);
+  if (scan.status !== "ok") {
+    encrypted.fill(0);
+    wal?.fill(0);
+    for (const candidate of scan.candidates) candidate.fill(0);
+    throw new Error(`LINE Desktop key scan failed: ${scan.status}`);
+  }
+
+  let key: Buffer | undefined;
+  let plain: Buffer | undefined;
+  let merged: Buffer | undefined;
+  try {
+    for (const candidate of scan.candidates) {
+      if (verifyWxSqlite3BaseKey(encrypted, candidate)) {
+        key = Buffer.from(candidate);
+        break;
+      }
+    }
+    if (!key) throw new Error("No local Desktop key matched the selected database");
+
+    plain = decryptWxSqlite3FileWithBaseKey(encrypted, key);
+    let walStats = {
+      present: false,
+      validFrames: 0,
+      committedFrames: 0,
+      transactions: 0,
+      updatedPages: 0,
+    };
+    if (wal) {
+      const applied = applyWxSqlite3WalWithBaseKey(plain, wal, key);
+      merged = applied.database;
+      walStats = {
+        present: true,
+        validFrames: applied.validFrameCount,
+        committedFrames: applied.committedFrameCount,
+        transactions: applied.transactionCount,
+        updatedPages: applied.updatedPageCount,
+      };
+    }
+    const database = merged ?? plain;
+    const summary = summarizePlainDatabase(database);
+    return { database, ...summary, wal: walStats };
+  } catch (error) {
+    merged?.fill(0);
+    plain?.fill(0);
+    throw error;
+  } finally {
+    encrypted.fill(0);
+    wal?.fill(0);
+    key?.fill(0);
+    for (const candidate of scan.candidates) candidate.fill(0);
+    if (merged) plain?.fill(0);
+  }
+}
+
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

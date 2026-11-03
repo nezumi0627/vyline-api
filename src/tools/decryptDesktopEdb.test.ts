@@ -13,11 +13,18 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deriveWxSqlite3BaseKey128, pageIv, pageKey128 } from "../desktop/wxSqlite3.js";
+import { decryptDesktopEdbSnapshot } from "./decryptDesktopEdb.js";
 
 const toolPath = join(import.meta.dir, "decryptDesktopEdb.ts");
 const absentEdb = join(import.meta.dir, "does-not-exist.edb");
 const passphrase = Buffer.from("0123456789abcdef0123456789abcdef", "ascii");
 const sqliteHeader = Buffer.from("SQLite format 3\0", "ascii");
+
+test("requires explicit consent before decrypting a Desktop snapshot in memory", () => {
+  expect(() => decryptDesktopEdbSnapshot(absentEdb, 0, false)).toThrow(
+    "Explicit consent is required",
+  );
+});
 
 function makeEncryptedFixture(): Buffer {
   const baseKey = deriveWxSqlite3BaseKey128(passphrase);
