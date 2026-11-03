@@ -96,7 +96,7 @@ function modmult(a: number, b: number, c: number, m: number, s: number): number 
   const q = Math.floor(s / a);
   const r = s % a;
   const t = b * r - c * q;
-  if (t > 0) return t;
+  if (t >= 0) return t;
   return t + m;
 }
 
@@ -106,7 +106,8 @@ export function pageIv(pageNumber: number): Buffer {
   const b = 40692;
   const c = 3791;
   const m = 2147483399;
-  let s = pageNumber >>> 0;
+  // wxSQLite3's sqlite3mcGenerateInitialVector() starts from seed + 1.
+  let s = (pageNumber + 1) >>> 0;
   const parts: Buffer[] = [];
   for (let i = 0; i < 4; i++) {
     s = modmult(a, b, c, m, s) >>> 0;
@@ -147,28 +148,41 @@ export function verifyWxSqlite3Passphrase(
   opts?: { lineQuirk?: boolean; pageSize?: number },
 ): boolean {
   const lineQuirk = opts?.lineQuirk ?? true;
-  const pageSize = opts?.pageSize ?? 1024;
+  const encodedPageSize = file.length >= 18 ? file.readUInt16BE(16) : 0;
+  const detectedPageSize = encodedPageSize === 1 ? 65536 : encodedPageSize;
+  const pageSize = opts?.pageSize ?? detectedPageSize;
   if (file.length < pageSize) return false;
   try {
+    const header = file.subarray(16, 24);
+    const encodedPageSize = header.readUInt16BE(0);
+    const actualPageSize = encodedPageSize === 1 ? 65536 : encodedPageSize;
+    if (
+      actualPageSize !== pageSize ||
+      ![512, 1024, 2048, 4096, 8192, 16384, 32768, 65536].includes(actualPageSize) ||
+      ![1, 2].includes(header[2]!) ||
+      ![1, 2].includes(header[3]!) ||
+      header[5] !== 64 ||
+      header[6] !== 32 ||
+      header[7] !== 32
+    ) {
+      return false;
+    }
+
     const base = deriveWxSqlite3BaseKey128(passphrase, lineQuirk);
     const key = pageKey128(base, 1);
     const iv = pageIv(1);
     const page = Buffer.from(file.subarray(0, pageSize));
-    // restore encrypted bytes at 8-15 into decrypt input: paper says
-    // decrypt by comparing backup at 16-23 with decrypt of (8-15)+(24-31)
-    // Practical approach used by forensics tools:
-    // copy ciphertext[8:16] aside, put SQLITE header[0:16], decrypt rest...
-    // Verification: decrypt page then force header
-    const plain = aes128CbcDecrypt(key, iv, page);
-    // After decrypt, offsets 16-23 should match original file 16-23 (backed up)
-    const backup = file.subarray(16, 24);
-    if (plain.subarray(16, 24).equals(backup)) {
-      // also try reconstructing header
-      return true;
-    }
-    // alternate check: decrypted starts with usable page after header fix
-    const fixed = Buffer.concat([SQLITE_HEADER, plain.subarray(16)]);
-    return fixed.subarray(0, 6).toString("ascii") === "SQLite";
+    const encryptedMeta = Buffer.from(page.subarray(8, 16));
+    const clearMeta = Buffer.from(page.subarray(16, 24));
+    encryptedMeta.copy(page, 16);
+    const body = aes128CbcDecrypt(key, iv, page.subarray(16));
+    if (!body.subarray(0, 8).equals(clearMeta)) return false;
+
+    // wxSQLite3 encrypts page-one's 16-byte SQLite header separately and
+    // moves the first encrypted body bytes into the 8-byte gap at 8..15.
+    // Validate the decrypted b-tree page header before accepting the key.
+    const btreeType = body[84]; // absolute page offset 100
+    return btreeType === 0x02 || btreeType === 0x05 || btreeType === 0x0a || btreeType === 0x0d;
   } catch {
     return false;
   }
@@ -188,7 +202,9 @@ export function decryptWxSqlite3File(
     const be = file.readUInt16BE(16);
     pageSize = be === 1 ? 65536 : be;
     if (![512, 1024, 2048, 4096, 8192, 16384, 32768, 65536].includes(pageSize)) {
-      pageSize = 1024;
+      throw new Error(
+        "Invalid wxSQLite3 page size; specify pageSize explicitly if this is a legacy database",
+      );
     }
   }
 
@@ -199,13 +215,24 @@ export function decryptWxSqlite3File(
     const enc = Buffer.from(file.subarray(start, start + pageSize));
     const key = pageKey128(base, p);
     const iv = pageIv(p);
-    let plain = aes128CbcDecrypt(key, iv, enc);
     if (p === 1) {
-      // restore standard SQLite header
-      plain = Buffer.concat([SQLITE_HEADER, plain.subarray(16)]);
-      // restore page size / meta from original plaintext region if needed
-      file.subarray(16, 24).copy(plain, 16);
+      // wxSQLite3 encrypts the SQLite header separately. Bytes 8..15 hold
+      // the encrypted body bytes displaced from 16..23; the clear header
+      // metadata at 16..23 is used to validate and restore the page.
+      const clearMeta = Buffer.from(file.subarray(16, 24));
+      file.copy(enc, 16, 8, 16);
+      const body = aes128CbcDecrypt(key, iv, enc.subarray(16));
+      if (!body.subarray(0, 8).equals(clearMeta)) {
+        throw new Error(
+          "wxSQLite3 page-one metadata check failed; incorrect passphrase or unsupported format",
+        );
+      }
+      SQLITE_HEADER.copy(out, start);
+      body.copy(out, start + 16);
+      clearMeta.copy(out, start + 16);
+      continue;
     }
+    const plain = aes128CbcDecrypt(key, iv, enc);
     plain.copy(out, start);
   }
   // trailing bytes
