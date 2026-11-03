@@ -27,8 +27,11 @@ export declare class SquareService implements BaseService {
         squareChatMid: string;
         threadMid?: string;
         syncToken?: string;
+        continuationToken?: string;
         limit?: number;
         direction?: LINETypes.FetchDirection;
+        inclusive?: LINETypes.BooleanState;
+        fetchType?: LINETypes.FetchType;
     }): Promise<LINETypes.SquareService_fetchSquareChatEvents_result["success"]>;
     sendMessage(options: {
         squareChatMid: string;
