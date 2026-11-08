@@ -31,6 +31,8 @@ import {
 export { VoomChannelId };
 export type { VoomClient, VoomRestOptions, VoomRestResponse };
 export type { CompactMessageResponse, SendCompactMessageOptions };
+
+const MIDS_PER_REQUEST = 100;
 export * as call from "./features/call/mod.js";
 export * as audio from "./features/call/audio.js";
 import {
@@ -232,9 +234,13 @@ export class Client extends TypedEventEmitter<ClientEvents> {
       },
       syncReason: "INTERNAL",
     });
-    const { chats } = await this.base.talk.getChats({
-      chatMids: joined.memberChatMids,
-    });
+    const chats: LINETypes.Chat[] = [];
+    for (let offset = 0; offset < joined.memberChatMids.length; offset += MIDS_PER_REQUEST) {
+      const { chats: batch } = await this.base.talk.getChats({
+        chatMids: joined.memberChatMids.slice(offset, offset + MIDS_PER_REQUEST),
+      });
+      chats.push(...batch);
+    }
     return chats.map((raw) => new Chat({ client: this, raw }));
   }
 
@@ -245,20 +251,28 @@ export class Client extends TypedEventEmitter<ClientEvents> {
     });
     if (!userFriendMids?.length) return [];
     try {
-      const res = await this.base.relation.getContactsV3({
-        mids: userFriendMids,
-      });
-      return res.responses.map((raw) => new User({ client: this, raw }));
+      const responses: LINETypes.GetContactV3Response[] = [];
+      for (let offset = 0; offset < userFriendMids.length; offset += MIDS_PER_REQUEST) {
+        const res = await this.base.relation.getContactsV3({
+          mids: userFriendMids.slice(offset, offset + MIDS_PER_REQUEST),
+        });
+        responses.push(...res.responses);
+      }
+      return responses.map((raw) => new User({ client: this, raw }));
     } catch (e) {
       if (!isApiNotCapable(e)) throw e;
     }
     try {
-      const res2 = await this.base.talk.getContactsV2({
-        mids: userFriendMids,
-      });
+      const contacts: Record<string, unknown> = {};
+      for (let offset = 0; offset < userFriendMids.length; offset += MIDS_PER_REQUEST) {
+        const res2 = await this.base.talk.getContactsV2({
+          mids: userFriendMids.slice(offset, offset + MIDS_PER_REQUEST),
+        });
+        Object.assign(contacts, res2.contacts ?? {});
+      }
       // V2 returns { contacts: Record<mid, entry> }; shim to V3 shape.
       const out: User[] = [];
-      for (const [mid, entry] of Object.entries(res2.contacts ?? {})) {
+      for (const [mid, entry] of Object.entries(contacts)) {
         out.push(
           new User({
             client: this,
