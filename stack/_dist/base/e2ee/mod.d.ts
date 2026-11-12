@@ -3,6 +3,7 @@ import type { Location, Message } from "@vyline/line-types";
 import * as LINETypes from "@vyline/line-types";
 import type { BaseClient } from "../core/mod.ts";
 import type { LooseType } from "@vyline/loose-types";
+import { type MediaMacType } from "./mediaMac.js";
 interface GroupKey {
     privKey: string;
     keyId: number;
@@ -63,11 +64,11 @@ export declare class E2EE {
         macKey: Buffer;
         nonce: Buffer;
     }>;
-    encryptByKeyMaterial(rawData: Buffer, keyMaterial?: Buffer): Promise<{
+    encryptByKeyMaterial(rawData: Buffer, keyMaterial?: Buffer, mediaType?: MediaMacType): Promise<{
         keyMaterial: string;
         encryptedData: Buffer;
     }>;
-    decryptByKeyMaterial(rawData: Buffer, keyMaterial: Buffer | string): Promise<Buffer>;
+    decryptByKeyMaterial(rawData: Buffer, keyMaterial: Buffer | string, mediaType?: MediaMacType): Promise<Buffer>;
     /**
      * AES-GCM-SIV authenticated decryption. RFC 8452.
      *

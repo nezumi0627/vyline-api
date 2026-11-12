@@ -8,6 +8,7 @@ import type { ContentType, Message } from "@vyline/line-types";
 import { writeStruct } from "../thrift/readwrite/write.js";
 // @ts-types="thrift-types"
 import * as thrift from "thrift";
+import { createMediaMac, type MediaMacType } from "../e2ee/mediaMac.js";
 
 export type ObjType = "image" | "gif" | "video" | "audio" | "file";
 export interface ObsMetadata {
@@ -96,6 +97,7 @@ export async function encryptE2eeMediaFile(
   keys: E2eeMediaKeys,
   maxBytes = DEFAULT_MAX_E2EE_MEDIA_BYTES,
   signal?: AbortSignal,
+  mediaType: MediaMacType = "file",
 ): Promise<E2eeMediaFileResult> {
   assertMediaByteLimit(maxBytes);
   signal?.throwIfAborted();
@@ -109,7 +111,7 @@ export async function encryptE2eeMediaFile(
     throw new Error("media source size is invalid");
   }
   const cipher = crypto.createCipheriv("aes-256-ctr", keys.encKey, keys.nonce);
-  const hmac = crypto.createHmac("sha256", keys.macKey);
+  const hmac = createMediaMac(keys.macKey, mediaType);
   let output: Awaited<ReturnType<typeof open>> | undefined;
   let inputBytes = 0;
   let outputBytes = 0;
@@ -165,6 +167,7 @@ export async function decryptE2eeMediaResponseToFile(
   maxBytes = DEFAULT_MAX_E2EE_MEDIA_BYTES,
   signal?: AbortSignal,
   beforeWrite?: E2eeMediaBeforeWrite,
+  mediaType: MediaMacType = "file",
 ): Promise<E2eeMediaFileResult> {
   assertMediaByteLimit(maxBytes);
   signal?.throwIfAborted();
@@ -197,11 +200,13 @@ export async function decryptE2eeMediaResponseToFile(
     targetCreated = true;
     reader = response.body.getReader();
     const decipher = crypto.createDecipheriv("aes-256-ctr", keys.encKey, keys.nonce);
-    const hmac = crypto.createHmac("sha256", keys.macKey);
+    const hmac = createMediaMac(keys.macKey, mediaType);
+    const legacyMac = mediaType === "video" ? createMediaMac(keys.macKey) : undefined;
     const consumeCiphertext = async (ciphertext: Uint8Array): Promise<void> => {
       signal?.throwIfAborted();
       if (ciphertext.byteLength === 0) return;
       hmac.update(ciphertext);
+      legacyMac?.update(ciphertext);
       const plain = decipher.update(ciphertext);
       if (plain.byteLength > 0) {
         await beforeWrite?.(outputBytes + plain.byteLength, plain.byteLength);
@@ -246,7 +251,9 @@ export async function decryptE2eeMediaResponseToFile(
       throw new Error("encrypted media response is missing its authentication tag");
     }
     const expectedTag = hmac.digest();
-    if (!crypto.timingSafeEqual(expectedTag, tail)) {
+    const matches = crypto.timingSafeEqual(expectedTag, tail);
+    const legacyMatches = legacyMac ? crypto.timingSafeEqual(legacyMac.digest(), tail) : false;
+    if (!matches && !legacyMatches) {
       throw new Error("encrypted media authentication failed");
     }
     const final = decipher.final();
@@ -745,7 +752,9 @@ export class LineObs {
       throw new InternalError("ObsError", "Invalid mid");
     }
     const rawData = Buffer.from(await data.arrayBuffer());
-    const { keyMaterial, encryptedData } = await this.client.e2ee.encryptByKeyMaterial(rawData);
+    const { keyMaterial, encryptedData } = await this.client.e2ee.encryptByKeyMaterial(
+      rawData, undefined, oType === "video" ? "video" : "file",
+    );
     const tempId = "reqid-" + crypto.randomUUID();
     // @ts-expect-error: will fix cuz typescript version change
     const edata = new Blob([encryptedData]);
@@ -925,7 +934,9 @@ export class LineObs {
     const encryptedPreviewPath = `${dataPath}.${crypto.randomUUID()}.e2ee-preview-partial`;
 
     try {
-      const encrypted = await encryptE2eeMediaFile(dataPath, encryptedPath, keys, maxBytes, signal);
+      const encrypted = await encryptE2eeMediaFile(
+        dataPath, encryptedPath, keys, maxBytes, signal, oType === "video" ? "video" : "file",
+      );
       const encryptedBody = await openAsBlob(encrypted.path, {
         type: "application/octet-stream",
       });
@@ -1020,6 +1031,7 @@ export class LineObs {
     talkMeta: string;
     keyMaterial: string;
     fileName: string;
+    mediaType: MediaMacType;
   } | null> {
     if (!(message.to[0] === "u" || message.to[0] === "c")) {
       throw new InternalError("ObsError", "Invalid mid");
@@ -1059,7 +1071,9 @@ export class LineObs {
         ).toString("base64"),
       }),
     ).toString("base64");
-    return { oid, obsPath: `talk/${sid}`, talkMeta, keyMaterial, fileName };
+    const mediaType = sid === "emv" || String(message.contentType) === "2" ||
+      String(message.contentType) === "VIDEO" ? "video" : "file";
+    return { oid, obsPath: `talk/${sid}`, talkMeta, keyMaterial, fileName, mediaType };
   }
 
   public async downloadMediaByE2EEToFile(
@@ -1093,6 +1107,7 @@ export class LineObs {
         maxBytes,
         signal,
         beforeWrite,
+        context.mediaType,
       );
       return {
         ...result,
@@ -1118,6 +1133,7 @@ export class LineObs {
         (await this.client.e2ee.decryptByKeyMaterial(
           Buffer.from(await data.arrayBuffer()),
           context.keyMaterial,
+          context.mediaType,
         )) as unknown as BlobPart,
       ],
       context.fileName,
