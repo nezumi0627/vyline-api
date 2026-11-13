@@ -10,6 +10,7 @@ import { ContentType } from "../thrift/readwrite/struct.js";
 import CryptoJS from "crypto-js";
 import { gcmsiv } from "@noble/ciphers/aes.js";
 import type { LooseType } from "@vyline/loose-types";
+import { createMediaMac, type MediaMacType } from "./mediaMac.js";
 
 interface GroupKey {
   privKey: string;
@@ -1078,6 +1079,7 @@ export class E2EE {
   async encryptByKeyMaterial(
     rawData: Buffer,
     keyMaterial?: Buffer,
+    mediaType: MediaMacType = "file",
   ): Promise<{ keyMaterial: string; encryptedData: Buffer }> {
     // Encrypt file for E2EE Next
     if (!keyMaterial) {
@@ -1085,7 +1087,9 @@ export class E2EE {
     }
     const keys = await this.deriveKeyMaterial(keyMaterial);
     const encData = await this.__encryptAESCTR(keys.encKey, keys.nonce, rawData);
-    const sign = this.signData(encData, keys.macKey);
+    const mac = createMediaMac(keys.macKey, mediaType);
+    mac.update(encData);
+    const sign = mac.digest();
 
     return {
       keyMaterial: keyMaterial.toString("base64"),
@@ -1093,7 +1097,11 @@ export class E2EE {
     };
   }
 
-  async decryptByKeyMaterial(rawData: Buffer, keyMaterial: Buffer | string): Promise<Buffer> {
+  async decryptByKeyMaterial(
+    rawData: Buffer,
+    keyMaterial: Buffer | string,
+    mediaType: MediaMacType = "file",
+  ): Promise<Buffer> {
     // Decrypt file for E2EE Next
     if (typeof keyMaterial === "string") {
       keyMaterial = Buffer.from(keyMaterial, "base64");
@@ -1102,8 +1110,14 @@ export class E2EE {
     const keys = await this.deriveKeyMaterial(keyMaterial);
     const ciphertext = rawData.subarray(0, -32);
     const tag = rawData.subarray(-32);
-    const expected = this.signData(ciphertext, keys.macKey);
-    if (!crypto.timingSafeEqual(expected, tag)) {
+    const mac = createMediaMac(keys.macKey, mediaType);
+    mac.update(ciphertext);
+    const matches = crypto.timingSafeEqual(mac.digest(), tag);
+    // Older Vyline versions sent video with the file MAC. Still authenticate
+    // those attachments, while producing the official video MAC for new sends.
+    const legacyMatches = !matches && mediaType === "video" &&
+      crypto.timingSafeEqual(this.signData(ciphertext, keys.macKey), tag);
+    if (!matches && !legacyMatches) {
       throw new Error("E2EE media authentication failed");
     }
     return await this.___decryptAESCTR(keys.encKey, keys.nonce, ciphertext);
