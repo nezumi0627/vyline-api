@@ -199,7 +199,7 @@ function parseCandidateLines(output: Buffer): Buffer[] {
 
 type MemoryScanResult = {
   candidates: Buffer[];
-  status: "ok" | "no-process" | "multiple-processes" | "wrong-process" | "error";
+  status: "ok" | "no-process" | "multiple-processes" | "wrong-process" | "access-denied" | "error";
 };
 
 function scanPassphrasesFromMemory(requestedPid: number): MemoryScanResult {
@@ -261,7 +261,7 @@ public class MemScan {
     if (processes.Length == 0) return new List<string> { "__NO_LINE_PROCESS__" };
     foreach (var p in processes) {
       var h = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, p.Id);
-      if (h == IntPtr.Zero) continue;
+      if (h == IntPtr.Zero) return new List<string> { "__ACCESS_DENIED__" };
       long addr = 0; var mbi = new MEMORY_BASIC_INFORMATION();
       var buf = new byte[1024 * 1024];
       while (addr < 0x7FFFFFFFFFFF) {
@@ -312,6 +312,7 @@ $targetPid = [int]$env:VYLINE_MEMORY_SCAN_PID
   if (hasMarker("MULTIPLE_LINE_PROCESSES")) status = "multiple-processes";
   else if (hasMarker("WRONG_PROCESS")) status = "wrong-process";
   else if (hasMarker("NO_LINE_PROCESS")) status = "no-process";
+  else if (hasMarker("ACCESS_DENIED")) status = "access-denied";
   else if (r.status !== 0) status = "error";
   const candidates = status === "ok" ? parseCandidateLines(stdout) : [];
   stdout.fill(0);
@@ -364,6 +365,8 @@ async function main() {
       "multiple-processes":
         "LINE Desktopが複数起動しています。対象PIDを --pid で指定してください。",
       "wrong-process": "指定PIDはLINE Desktopではありません。LINE.exeのPIDを指定してください。",
+      "access-denied":
+        "LINE Desktopのメモリ読み取りが拒否されました。LINEとVylineを同じWindowsユーザー権限で起動してください。",
       error: "Windowsのメモリ走査を開始できませんでした。",
       ok: "",
     };
