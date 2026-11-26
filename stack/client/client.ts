@@ -93,23 +93,31 @@ async function fetchInBatches<T, R>(
   items: T[],
   batchSize: number,
   fetchBatch: (batch: T[]) => Promise<R[]>,
+  onItemError?: (item: T, err: unknown) => R[] | undefined,
 ): Promise<R[]> {
   const out: R[] = [];
   let firstError: unknown;
+  let realResults = 0;
   for (let offset = 0; offset < items.length; offset += batchSize) {
     const batch = items.slice(offset, offset + batchSize);
     try {
-      out.push(...(await fetchBatch(batch)));
+      const results = await fetchBatch(batch);
+      out.push(...results);
+      realResults += results.length;
     } catch (e) {
       if (isApiNotCapable(e)) throw e;
       firstError ??= e;
       for (const item of batch) {
         try {
-          out.push(...(await fetchBatch([item])));
+          const results = await fetchBatch([item]);
+          out.push(...results);
+          realResults += results.length;
         } catch (itemErr) {
           if (isApiNotCapable(itemErr)) throw itemErr;
           firstError ??= itemErr;
-          // Skip the rejected MID, keep the rest of the batch.
+          // Skip or stub the rejected MID, keep the rest of the batch.
+          const fallback = onItemError?.(item, itemErr);
+          if (fallback) out.push(...fallback);
         }
       }
     }
@@ -117,7 +125,7 @@ async function fetchInBatches<T, R>(
   // Every item rejected is a systemic failure (auth, endpoint down), not a
   // handful of poisoned MIDs — rethrow so callers keep their cached fallback
   // instead of treating an empty list as a successful sync.
-  if (!out.length && firstError) throw firstError;
+  if (!realResults && firstError) throw firstError;
   return out;
 }
 
@@ -275,6 +283,10 @@ export class Client extends TypedEventEmitter<ClientEvents> {
       joined.memberChatMids,
       MIDS_PER_REQUEST,
       async (chatMids) => (await this.base.talk.getChats({ chatMids })).chats,
+      // A rejected chat still gets a stub entry: the chat list is the
+      // membership source of truth, and dropping the MID would silently
+      // remove a group the user still belongs to from the roster.
+      (chatMid) => [{ chatMid, chatName: "" } as LINETypes.Chat],
     );
     return chats.map((raw) => new Chat({ client: this, raw }));
   }

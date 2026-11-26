@@ -11,12 +11,11 @@ const square = ["/SQ1", "/SQLV1"];
  * reports cannot tell e.g. `INVALID_LENGTH` from `NOT_FOUND`.
  */
 function formatException(e: unknown): string {
-  if (!e || typeof e !== "object") return "";
-  const { code, reason, parameterMap } = e as {
-    code?: unknown;
-    reason?: unknown;
-    parameterMap?: unknown;
-  };
+  // Exception payloads are not always top-level: e.g. getContactsV3 nests
+  // them under `be` / `ce` / `te` / `ere` (RejectedException, ...).
+  const ex = findException(e);
+  if (!ex) return "";
+  const { code, reason, parameterMap } = ex;
   const head = [code, reason]
     .filter((v) => (typeof v === "string" && v.length > 0) || typeof v === "number")
     .join(" ");
@@ -26,6 +25,26 @@ function formatException(e: unknown): string {
       : "";
   const text = `${head}${params}`.trim();
   return text ? `: ${text}` : "";
+}
+
+function findException(
+  v: unknown,
+  depth = 0,
+): { code?: unknown; reason?: unknown; parameterMap?: unknown } | null {
+  if (!v || typeof v !== "object" || depth > 2) return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.code === "string" ||
+    typeof o.code === "number" ||
+    typeof o.reason === "string"
+  ) {
+    return o;
+  }
+  for (const key of Object.keys(o)) {
+    const found = findException(o[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**

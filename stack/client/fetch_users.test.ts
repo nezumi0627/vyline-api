@@ -99,7 +99,7 @@ Deno.test("fetchUsers — poisoned MID in a batch is skipped, not fatal", async 
   assertEquals(users.map((u) => u.mid), ["u-a", "u-b"]);
 });
 
-Deno.test("fetchJoinedChats — poisoned chat MID in a batch is skipped", async () => {
+Deno.test("fetchJoinedChats — poisoned chat MID in a batch returns a stub, not a drop", async () => {
   const base = {
     profile: { mid: "u-self" },
     talk: {
@@ -119,6 +119,7 @@ Deno.test("fetchJoinedChats — poisoned chat MID in a batch is skipped", async 
   const chats = await client.fetchJoinedChats();
   assertEquals(chats.map((c) => (c as unknown as { raw: { chatMid: string } }).raw.chatMid), [
     "c-a",
+    "c-bad",
     "c-b",
   ]);
 });
