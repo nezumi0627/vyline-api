@@ -6,6 +6,29 @@ import { LegyEncryptedTransport } from "./legy.js";
 const square = ["/SQ1", "/SQLV1"];
 
 /**
+ * Render a server-side Thrift exception (`code`/`reason`/`parameterMap`) for
+ * log messages. Without this the thrown message only names the RPC, so bug
+ * reports cannot tell e.g. `INVALID_LENGTH` from `NOT_FOUND`.
+ */
+function formatException(e: unknown): string {
+  if (!e || typeof e !== "object") return "";
+  const { code, reason, parameterMap } = e as {
+    code?: unknown;
+    reason?: unknown;
+    parameterMap?: unknown;
+  };
+  const head = [code, reason]
+    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .join(" ");
+  const params =
+    parameterMap && typeof parameterMap === "object" && Object.keys(parameterMap).length
+      ? ` ${JSON.stringify(parameterMap)}`
+      : "";
+  const text = `${head}${params}`.trim();
+  return text ? `: ${text}` : "";
+}
+
+/**
  * Request Client
  */
 /**
@@ -235,7 +258,7 @@ export class RequestClient {
     if (res.data.e && !isRefresh) {
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path})`,
+        `Request internal failed, ${methodName}(${path})${formatException(res.data.e)}`,
         res.data.e,
       );
     }
@@ -246,7 +269,7 @@ export class RequestClient {
       }
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path})`,
+        `Request internal failed, ${methodName}(${path})${formatException(res.data.e ?? res.data)}`,
         res.data,
       );
     }
