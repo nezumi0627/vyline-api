@@ -82,3 +82,62 @@ Deno.test("fetchUsers — non-capability errors are rethrown", async () => {
   assert(err instanceof Error);
   assertEquals((err as Error).message, "AUTHENTICATION_FAILED");
 });
+
+Deno.test("fetchUsers — poisoned MID in a batch is skipped, not fatal", async () => {
+  const client = buildClient({
+    friendMids: ["u-a", "u-bad", "u-b"],
+    v3: (req) => {
+      if (req.mids.includes("u-bad")) {
+        return Promise.reject(new Error("Request internal failed, getContactsV3(/RE4): INVALID_LENGTH"));
+      }
+      return Promise.resolve({
+        responses: req.mids.map((mid) => ({ targetUserMid: mid })),
+      });
+    },
+  });
+  const users = await client.fetchUsers();
+  assertEquals(users.map((u) => u.mid), ["u-a", "u-b"]);
+});
+
+Deno.test("fetchJoinedChats — poisoned chat MID in a batch returns a stub, not a drop", async () => {
+  const base = {
+    profile: { mid: "u-self" },
+    talk: {
+      getAllChatMids: () =>
+        Promise.resolve({ memberChatMids: ["c-a", "c-bad", "c-b"] }),
+      getChats: (req: { chatMids: string[] }) => {
+        if (req.chatMids.includes("c-bad")) {
+          return Promise.reject(new Error("Request internal failed, getChats(/S4): INVALID_LENGTH"));
+        }
+        return Promise.resolve({
+          chats: req.chatMids.map((mid) => ({ chatMid: mid })),
+        });
+      },
+    },
+  };
+  const client = new Client(base as never);
+  const chats = await client.fetchJoinedChats();
+  assertEquals(chats.map((c) => (c as unknown as { raw: { chatMid: string } }).raw.chatMid), [
+    "c-a",
+    "c-bad",
+    "c-b",
+  ]);
+});
+
+Deno.test("fetchJoinedChats — every MID rejected rethrows instead of returning empty", async () => {
+  const base = {
+    profile: { mid: "u-self" },
+    talk: {
+      getAllChatMids: () => Promise.resolve({ memberChatMids: ["c-a", "c-b"] }),
+      getChats: () => Promise.reject(new Error("Request internal failed, getChats(/S4): INTERNAL_ERROR")),
+    },
+  };
+  const client = new Client(base as never);
+  let err: unknown;
+  try {
+    await client.fetchJoinedChats();
+  } catch (e) {
+    err = e;
+  }
+  assert(err instanceof Error);
+});

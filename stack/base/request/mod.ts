@@ -6,6 +6,48 @@ import { LegyEncryptedTransport } from "./legy.js";
 const square = ["/SQ1", "/SQLV1"];
 
 /**
+ * Render a server-side Thrift exception (`code`/`reason`/`parameterMap`) for
+ * log messages. Without this the thrown message only names the RPC, so bug
+ * reports cannot tell e.g. `INVALID_LENGTH` from `NOT_FOUND`.
+ */
+export function formatException(e: unknown): string {
+  // Exception payloads are not always top-level: e.g. getContactsV3 nests
+  // them under `be` / `ce` / `te` / `ere` (RejectedException, ...).
+  const ex = findException(e);
+  if (!ex) return "";
+  const { code, reason, parameterMap } = ex;
+  const head = [code, reason]
+    .filter((v) => (typeof v === "string" && v.length > 0) || typeof v === "number")
+    .join(" ");
+  const params =
+    parameterMap && typeof parameterMap === "object" && Object.keys(parameterMap).length
+      ? ` ${JSON.stringify(parameterMap)}`
+      : "";
+  const text = `${head}${params}`.trim();
+  return text ? `: ${text}` : "";
+}
+
+function findException(
+  v: unknown,
+  depth = 0,
+): { code?: unknown; reason?: unknown; parameterMap?: unknown } | null {
+  if (!v || typeof v !== "object" || depth > 2) return null;
+  const o = v as Record<string, unknown>;
+  if (
+    typeof o.code === "string" ||
+    typeof o.code === "number" ||
+    typeof o.reason === "string"
+  ) {
+    return o;
+  }
+  for (const key of Object.keys(o)) {
+    const found = findException(o[key], depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
  * Request Client
  */
 /**
@@ -235,7 +277,7 @@ export class RequestClient {
     if (res.data.e && !isRefresh) {
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path})`,
+        `Request internal failed, ${methodName}(${path})${formatException(res.data.e)}`,
         res.data.e,
       );
     }
@@ -246,7 +288,7 @@ export class RequestClient {
       }
       throw new InternalError(
         "RequestError",
-        `Request internal failed, ${methodName}(${path})`,
+        `Request internal failed, ${methodName}(${path})${formatException(res.data.e ?? res.data)}`,
         res.data,
       );
     }

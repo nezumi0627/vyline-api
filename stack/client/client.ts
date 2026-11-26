@@ -84,6 +84,49 @@ function isApiNotCapable(e: unknown): boolean {
   return /API method not capable/i.test(msg);
 }
 
+/**
+ * Fetch `items` in batches; a rejected batch is retried item by item so one
+ * poisoned MID (deleted/forbidden chat or contact) cannot sink the whole sync.
+ * Errors that mean the RPC itself is unavailable still abort immediately.
+ */
+async function fetchInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  fetchBatch: (batch: T[]) => Promise<R[]>,
+  onItemError?: (item: T, err: unknown) => R[] | undefined,
+): Promise<R[]> {
+  const out: R[] = [];
+  let firstError: unknown;
+  let succeeded = 0;
+  for (let offset = 0; offset < items.length; offset += batchSize) {
+    const batch = items.slice(offset, offset + batchSize);
+    try {
+      out.push(...(await fetchBatch(batch)));
+      succeeded++;
+    } catch (e) {
+      if (isApiNotCapable(e)) throw e;
+      firstError ??= e;
+      for (const item of batch) {
+        try {
+          out.push(...(await fetchBatch([item])));
+          succeeded++;
+        } catch (itemErr) {
+          if (isApiNotCapable(itemErr)) throw itemErr;
+          firstError ??= itemErr;
+          // Skip or stub the rejected MID, keep the rest of the batch.
+          const fallback = onItemError?.(item, itemErr);
+          if (fallback) out.push(...fallback);
+        }
+      }
+    }
+  }
+  // Every call rejected is a systemic failure (auth, endpoint down), not a
+  // handful of poisoned MIDs — rethrow so callers keep their cached fallback
+  // instead of treating an empty list as a successful sync.
+  if (!succeeded && firstError) throw firstError;
+  return out;
+}
+
 export class Client extends TypedEventEmitter<ClientEvents> {
   readonly base: BaseClient;
   #liff?: LiffClient;
@@ -234,13 +277,15 @@ export class Client extends TypedEventEmitter<ClientEvents> {
       },
       syncReason: "INTERNAL",
     });
-    const chats: LINETypes.Chat[] = [];
-    for (let offset = 0; offset < joined.memberChatMids.length; offset += MIDS_PER_REQUEST) {
-      const { chats: batch } = await this.base.talk.getChats({
-        chatMids: joined.memberChatMids.slice(offset, offset + MIDS_PER_REQUEST),
-      });
-      chats.push(...batch);
-    }
+    const chats = await fetchInBatches(
+      joined.memberChatMids,
+      MIDS_PER_REQUEST,
+      async (chatMids) => (await this.base.talk.getChats({ chatMids })).chats,
+      // A rejected chat still gets a stub entry: the chat list is the
+      // membership source of truth, and dropping the MID would silently
+      // remove a group the user still belongs to from the roster.
+      (chatMid) => [{ chatMid, chatName: "" } as LINETypes.Chat],
+    );
     return chats.map((raw) => new Chat({ client: this, raw }));
   }
 
@@ -251,25 +296,23 @@ export class Client extends TypedEventEmitter<ClientEvents> {
     });
     if (!userFriendMids?.length) return [];
     try {
-      const responses: LINETypes.GetContactV3Response[] = [];
-      for (let offset = 0; offset < userFriendMids.length; offset += MIDS_PER_REQUEST) {
-        const res = await this.base.relation.getContactsV3({
-          mids: userFriendMids.slice(offset, offset + MIDS_PER_REQUEST),
-        });
-        responses.push(...res.responses);
-      }
+      const responses = await fetchInBatches(
+        userFriendMids,
+        MIDS_PER_REQUEST,
+        async (mids) => (await this.base.relation.getContactsV3({ mids })).responses,
+      );
       return responses.map((raw) => new User({ client: this, raw }));
     } catch (e) {
       if (!isApiNotCapable(e)) throw e;
     }
     try {
-      const contacts: Record<string, unknown> = {};
-      for (let offset = 0; offset < userFriendMids.length; offset += MIDS_PER_REQUEST) {
-        const res2 = await this.base.talk.getContactsV2({
-          mids: userFriendMids.slice(offset, offset + MIDS_PER_REQUEST),
-        });
-        Object.assign(contacts, res2.contacts ?? {});
-      }
+      const contactEntries = await fetchInBatches(
+        userFriendMids,
+        MIDS_PER_REQUEST,
+        async (mids) =>
+          Object.entries((await this.base.talk.getContactsV2({ mids })).contacts ?? {}),
+      );
+      const contacts = Object.fromEntries(contactEntries);
       // V2 returns { contacts: Record<mid, entry> }; shim to V3 shape.
       const out: User[] = [];
       for (const [mid, entry] of Object.entries(contacts)) {
