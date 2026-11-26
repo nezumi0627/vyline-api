@@ -97,21 +97,19 @@ async function fetchInBatches<T, R>(
 ): Promise<R[]> {
   const out: R[] = [];
   let firstError: unknown;
-  let realResults = 0;
+  let succeeded = 0;
   for (let offset = 0; offset < items.length; offset += batchSize) {
     const batch = items.slice(offset, offset + batchSize);
     try {
-      const results = await fetchBatch(batch);
-      out.push(...results);
-      realResults += results.length;
+      out.push(...(await fetchBatch(batch)));
+      succeeded++;
     } catch (e) {
       if (isApiNotCapable(e)) throw e;
       firstError ??= e;
       for (const item of batch) {
         try {
-          const results = await fetchBatch([item]);
-          out.push(...results);
-          realResults += results.length;
+          out.push(...(await fetchBatch([item])));
+          succeeded++;
         } catch (itemErr) {
           if (isApiNotCapable(itemErr)) throw itemErr;
           firstError ??= itemErr;
@@ -122,10 +120,10 @@ async function fetchInBatches<T, R>(
       }
     }
   }
-  // Every item rejected is a systemic failure (auth, endpoint down), not a
+  // Every call rejected is a systemic failure (auth, endpoint down), not a
   // handful of poisoned MIDs — rethrow so callers keep their cached fallback
   // instead of treating an empty list as a successful sync.
-  if (!realResults && firstError) throw firstError;
+  if (!succeeded && firstError) throw firstError;
   return out;
 }
 

@@ -10,7 +10,7 @@ const square = ["/SQ1", "/SQLV1"];
  * log messages. Without this the thrown message only names the RPC, so bug
  * reports cannot tell e.g. `INVALID_LENGTH` from `NOT_FOUND`.
  */
-function formatException(e: unknown): string {
+export function formatException(e: unknown): string {
   // Exception payloads are not always top-level: e.g. getContactsV3 nests
   // them under `be` / `ce` / `te` / `ere` (RejectedException, ...).
   const ex = findException(e);
