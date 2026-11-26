@@ -122,3 +122,21 @@ Deno.test("fetchJoinedChats — poisoned chat MID in a batch is skipped", async 
     "c-b",
   ]);
 });
+
+Deno.test("fetchJoinedChats — every MID rejected rethrows instead of returning empty", async () => {
+  const base = {
+    profile: { mid: "u-self" },
+    talk: {
+      getAllChatMids: () => Promise.resolve({ memberChatMids: ["c-a", "c-b"] }),
+      getChats: () => Promise.reject(new Error("Request internal failed, getChats(/S4): INTERNAL_ERROR")),
+    },
+  };
+  const client = new Client(base as never);
+  let err: unknown;
+  try {
+    await client.fetchJoinedChats();
+  } catch (e) {
+    err = e;
+  }
+  assert(err instanceof Error);
+});

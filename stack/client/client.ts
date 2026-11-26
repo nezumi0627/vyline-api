@@ -95,22 +95,29 @@ async function fetchInBatches<T, R>(
   fetchBatch: (batch: T[]) => Promise<R[]>,
 ): Promise<R[]> {
   const out: R[] = [];
+  let firstError: unknown;
   for (let offset = 0; offset < items.length; offset += batchSize) {
     const batch = items.slice(offset, offset + batchSize);
     try {
       out.push(...(await fetchBatch(batch)));
     } catch (e) {
-      if (batch.length === 1 || isApiNotCapable(e)) throw e;
+      if (isApiNotCapable(e)) throw e;
+      firstError ??= e;
       for (const item of batch) {
         try {
           out.push(...(await fetchBatch([item])));
         } catch (itemErr) {
           if (isApiNotCapable(itemErr)) throw itemErr;
+          firstError ??= itemErr;
           // Skip the rejected MID, keep the rest of the batch.
         }
       }
     }
   }
+  // Every item rejected is a systemic failure (auth, endpoint down), not a
+  // handful of poisoned MIDs — rethrow so callers keep their cached fallback
+  // instead of treating an empty list as a successful sync.
+  if (!out.length && firstError) throw firstError;
   return out;
 }
 

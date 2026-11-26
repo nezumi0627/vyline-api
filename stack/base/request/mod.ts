@@ -18,7 +18,7 @@ function formatException(e: unknown): string {
     parameterMap?: unknown;
   };
   const head = [code, reason]
-    .filter((v): v is string => typeof v === "string" && v.length > 0)
+    .filter((v) => (typeof v === "string" && v.length > 0) || typeof v === "number")
     .join(" ");
   const params =
     parameterMap && typeof parameterMap === "object" && Object.keys(parameterMap).length
